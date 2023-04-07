@@ -33,25 +33,27 @@ class UserDAO {
 	}
 
 	async createUser(user_data) {
-		await dbPool.query(
-			`INSERT INTO twitch_users
-			(id, login, email, secret, type, description, display_name, profile_image_url, created_on, last_login)
-			VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-			ON CONFLICT(id)
-			DO UPDATE SET login=$2, email=$3, type=$5, description=$6, display_name=$7, profile_image_url=$8, last_login=NOW();
-			`,
-			[
-				user_data.id,
-				user_data.login,
-				user_data.email,
-				user_data.secret,
-				user_data.type,
-				user_data.description,
-				user_data.display_name,
-				user_data.profile_image_url,
-			]
-		);
+		if (dbPool) {
+			await dbPool.query(
+				`INSERT INTO twitch_users
+				(id, login, email, secret, type, description, display_name, profile_image_url, created_on, last_login)
+				VALUES
+				($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+				ON CONFLICT(id)
+				DO UPDATE SET login=$2, email=$3, type=$5, description=$6, display_name=$7, profile_image_url=$8, last_login=NOW();
+				`,
+				[
+					user_data.id,
+					user_data.login,
+					user_data.email,
+					user_data.secret,
+					user_data.type,
+					user_data.description,
+					user_data.display_name,
+					user_data.profile_image_url,
+				]
+			);
+		}
 
 		// we force fetch to:
 		// 1) get the correct data shape
@@ -62,7 +64,9 @@ class UserDAO {
 	async deleteUser(user) {
 		this.removeUser(user);
 
-		await dbPool.query('DELETE FROM twitch_users WHERE id=$1;', [user.id]);
+		if (dbPool) {
+			await dbPool.query('DELETE FROM twitch_users WHERE id=$1;', [user.id]);
+		}
 	}
 
 	async updateSecret(user, new_secret) {
@@ -70,14 +74,16 @@ class UserDAO {
 		// WARNING: deal with it later
 
 		try {
-			// then update DB ... dubious order, the whole thing should be a transaction
-			await dbPool.query(
-				`UPDATE twitch_users
-				set secret=$1
-				WHERE id=$2
-				`,
-				[new_secret, user.id]
-			);
+			if (dbPool) {
+				// then update DB ... dubious order, the whole thing should be a transaction
+				await dbPool.query(
+					`UPDATE twitch_users
+					set secret=$1
+					WHERE id=$2
+					`,
+					[new_secret, user.id]
+				);
+			}
 
 			// TODO: add greater processing safety here
 			this.users_by_secret.delete(user.secret);
@@ -94,13 +100,17 @@ class UserDAO {
 		let user = this.users_by_id.get(id);
 
 		if (!user || force_fetch) {
-			const result = await dbPool.query(
-				'SELECT * FROM twitch_users WHERE id=$1',
-				[id]
-			);
+			if (dbPool) {
+				const result = await dbPool.query(
+					'SELECT * FROM twitch_users WHERE id=$1',
+					[id]
+				);
 
-			if (result.rows.length) {
-				user = this.addUserFromData(result.rows[0]);
+				if (result.rows.length) {
+					user = this.addUserFromData(result.rows[0]);
+				}
+			} else {
+				user = this.addUserFromData(this.#dummyRow(id));
 			}
 		}
 
@@ -111,13 +121,17 @@ class UserDAO {
 		let user = this.users_by_login.get(login);
 
 		if (!user) {
-			const result = await dbPool.query(
-				'SELECT * FROM twitch_users WHERE login=$1',
-				[login]
-			);
+			if (dbPool) {
+				const result = await dbPool.query(
+					'SELECT * FROM twitch_users WHERE login=$1',
+					[login]
+				);
 
-			if (result.rows.length) {
-				user = this.addUserFromData(result.rows[0]);
+				if (result.rows.length) {
+					user = this.addUserFromData(result.rows[0]);
+				}
+			} else {
+				user = this.addUserFromData(this.#dummyRow(login));
 			}
 		}
 
@@ -128,13 +142,17 @@ class UserDAO {
 		let user = this.users_by_secret.get(secret);
 
 		if (!user) {
-			const result = await dbPool.query(
-				'SELECT * FROM twitch_users WHERE secret=$1',
-				[secret]
-			);
+			if (dbPool) {
+				const result = await dbPool.query(
+					'SELECT * FROM twitch_users WHERE secret=$1',
+					[secret]
+				);
 
-			if (result.rows.length) {
-				user = this.addUserFromData(result.rows[0]);
+				if (result.rows.length) {
+					user = this.addUserFromData(result.rows[0]);
+				}
+			} else {
+				user = this.addUserFromData(this.#dummyRow(secret));
 			}
 		}
 
@@ -142,21 +160,23 @@ class UserDAO {
 	}
 
 	async updateProfile(user_id, update) {
-		await dbPool.query(
-			`UPDATE twitch_users
-			SET dob=$1, country_code=$2, city=$3, style=$4, interests=$5, timezone=$6
-			WHERE id=$7;
-			`,
-			[
-				update.dob,
-				update.country_code,
-				update.city,
-				update.style,
-				update.interests,
-				update.timezone || 'UTC',
-				user_id,
-			]
-		);
+		if (dbPool) {
+			await dbPool.query(
+				`UPDATE twitch_users
+				SET dob=$1, country_code=$2, city=$3, style=$4, interests=$5, timezone=$6
+				WHERE id=$7;
+				`,
+				[
+					update.dob,
+					update.country_code,
+					update.city,
+					update.style,
+					update.interests,
+					update.timezone || 'UTC',
+					user_id,
+				]
+			);
+		}
 
 		const user = await this.getUserById(user_id);
 
@@ -170,6 +190,19 @@ class UserDAO {
 		Object.assign(user, update);
 
 		return user;
+	}
+
+	#dummyRow(id) {
+		return {
+			id,
+			login: id,
+			secret: id,
+			email: '',
+			display_name: id,
+			description: '',
+			profile_image_url: '',
+			dob: new Date(),
+		};
 	}
 }
 

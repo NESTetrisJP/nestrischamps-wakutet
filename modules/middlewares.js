@@ -15,10 +15,12 @@ export default {
 			secure: !!process.env.IS_PUBLIC_SERVER,
 		},
 		genid: uuidv4,
-		store: new pgSession({
-			pool: dbPool,
-			tableName: 'sessions',
-		}),
+		store: dbPool
+			? new pgSession({
+					pool: dbPool,
+					tableName: 'sessions',
+			  })
+			: null,
 		name: 'nsid',
 	}),
 

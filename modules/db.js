@@ -15,7 +15,7 @@ if (process.env.IS_PUBLIC_SERVER) {
 	pool.on('error', err => {
 		console.error('DB: Unexpected error on idle client', err);
 	});
-} else {
+} else if (process.env.DATABASE_URL) {
 	/*
 	// Fake Pool for local access
 	// TODO: make a sqlite version
@@ -56,6 +56,8 @@ if (process.env.IS_PUBLIC_SERVER) {
 	pool.on('error', err => {
 		console.error('DB: Unexpected error on idle client', err);
 	});
+} else {
+	pool = null;
 }
 
 export default pool;
