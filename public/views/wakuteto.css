@@ -1,0 +1,170 @@
+#stream_bg {
+	width: 1920px;
+	height: 1000px;
+}
+
+.box {
+	position: revert;
+	margin: -4.5px;
+	font-size: 24px;
+	line-height: 30px;
+}
+
+.box .header {
+	padding-bottom: 2px;
+}
+
+#playing_fields {
+	display: flex;
+}
+
+.player {
+	width: 960px;
+	height: 1000px;
+	display: grid;
+}
+
+.p1 {
+	grid-template:
+		'. . .' 1fr
+		'. . scores' auto
+		'. info board' auto
+		'. name name' auto
+		'. . .' 1fr /
+		1fr auto auto;
+}
+
+.p2 {
+	grid-template:
+		'. . .' 1fr
+		'scores . .' auto
+		'board info .' auto
+		'name name .' auto
+		'. . .' 1fr /
+		auto auto 1fr;
+}
+
+.scores {
+	grid-area: scores;
+	display: grid;
+	grid-template:
+		'score lines' auto
+		'score next' auto /
+		1fr auto;
+}
+
+.score {
+	grid-area: score;
+	padding: 3px;
+	height: 100px;
+	margin-top: auto;
+}
+
+.score .value,
+.score .diff {
+	font-size: 32px;
+	line-height: 36px;
+	text-align: right;
+	white-space: pre-wrap;
+}
+
+.linesnext {
+	display: flex;
+}
+
+.lines {
+	grid-area: lines;
+	padding: 3px;
+	width: 100px;
+	height: 61px;
+}
+
+.next_piece {
+	grid-area: next;
+	--border-size: 12;
+	padding: 3px;
+	width: 106px;
+	height: 56px;
+}
+
+.next_piece .value {
+	position: relative;
+	width: 106px;
+	height: 56px;
+}
+
+.info {
+	grid-area: info;
+	display: grid;
+	grid-template:
+		'.' 1fr
+		'level' auto
+		'trt' auto /
+		1fr;
+}
+
+.info .level {
+	grid-area: level;
+	width: 78px;
+	height: 61px;
+	padding: 3px;
+}
+
+.info .drought {
+	grid-area: trt;
+	width: 78px;
+	height: 61px;
+	padding: 3px;
+}
+
+.info .tetris_rate {
+	grid-area: trt;
+	width: 78px;
+	height: 61px;
+	padding: 3px;
+}
+
+.board {
+	grid-area: board;
+	position: relative;
+	--border-size: 12;
+	padding: 3px;
+	width: 356px;
+	height: 716px;
+}
+
+.name {
+	grid-area: name;
+	height: 28px;
+}
+
+.hidden {
+	display: none;
+}
+
+/* TODO: ↓ */
+
+.hearts {
+	position: absolute;
+	color: #b0afb0;
+	letter-spacing: 8px;
+	text-align: center;
+	--offset: 328px;
+	right: var(--offset);
+}
+
+.hearts .win {
+	color: #fb0204;
+}
+
+.drought {
+	opacity: 0;
+	display: none;
+	color: red;
+}
+
+.drought.active {
+	display: block;
+	animation: fadeIn ease 1s;
+	animation-fill-mode: forwards;
+}

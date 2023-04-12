@@ -364,8 +364,13 @@ export default class Competition {
 					getter
 				);
 
-				sorted_players[0][setter](diff, t_diff, 0);
-				sorted_players[1][setter](diff, t_diff, winner_slice_ratio);
+				if (_players.length == 2 && diff == 0) {
+					sorted_players[0][setter](0, 0, 0.5);
+					sorted_players[1][setter](0, 0, 0.5);
+				} else {
+					sorted_players[0][setter](diff, t_diff, 0);
+					sorted_players[1][setter](-diff, -t_diff, winner_slice_ratio);
+				}
 			}
 
 			for (let pidx = 2; pidx < sorted_players.length; pidx++) {
