@@ -3,58 +3,6 @@
 	<head>
 		<link rel="stylesheet" type="text/css" href="/views/tetris.css" />
 		<link rel="stylesheet" type="text/css" href="/views/wakuteto.css" />
-		<style>
-			.flag,
-			.name {
-				top: 959px;
-				background: black;
-				border-style: solid;
-				border-color: white;
-				border-radius: 20px;
-				--border-width: 4px;
-				right: var(--offset);
-			}
-
-			.flag {
-				width: 114px;
-				height: 76px;
-				border-radius: 20px 0 0 20px;
-				border-width: var(--border-width) 0 var(--border-width)
-					var(--border-width);
-				--offset: 820px;
-			}
-
-			.flag img {
-				border-radius: 14px 0 0 14px;
-			}
-
-			.hearts {
-				position: absolute;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				--offset: 400px;
-				/* background: yellow; /**/
-				width: 30px;
-				height: 110px;
-				top: 938px;
-				right: var(--offset);
-			}
-
-			.hearts div {
-				width: 20px;
-				height: 20px;
-				background: black;
-				border: solid white 4px;
-				border-radius: 14px;
-				margin-bottom: 8px;
-			}
-
-			.hearts .win {
-				background: white;
-			}
-		</style>
 	</head>
 	<body>
 		<template id="player">
@@ -63,7 +11,7 @@
 					<div class="box score">
 						<div class="header">SCORE</div>
 						<div class="value">0</div>
-						<div class="diff">0</div>
+						<div class="diff">+ 0</div>
 					</div>
 					<div class="box lines">
 						<div class="header">LINE</div>
@@ -91,15 +39,24 @@
 
 				<div class="box board"></div>
 
-				<div class="box name">
-					<div class="value">NAMENAMENAME</div>
+				<div class="box names">
+					<div class="name">なまえ</div>
+					<div class="hearts">
+						<span class="lit">Œ</span>
+						<span class="unlit">Œ</span>
+						<span class="unlit">Œ</span>
+					</div>
+				</div>
+
+				<div class="profile">
+					<wakuteto-profile-card></wakuteto-profile-card>
 				</div>
 
 				<div class="hidden">
 					<video class="player_vid"></video>
 					<div class="hiddenname"></div>
 					<div class="flag"></div>
-					<div class="hearts">
+					<div class="hiddenhearts">
 						<div class="heart"></div>
 					</div>
 					<div class="tetris_diff">0.00</div>
@@ -161,7 +118,7 @@
 						running_trt: player_node.querySelector(`.running_trt`),
 						preview: player_node.querySelector(`.next_piece .value`),
 						field: player_node.querySelector(`.board`),
-						hearts: player_node.querySelector(`.hearts`),
+						hearts: player_node.querySelector(`.hiddenhearts`),
 						drought: player_node.querySelector(`.drought .value`),
 						eff: player_node.querySelector(`.eff`),
 
@@ -179,11 +136,11 @@
 						preview_align: 'cc',
 						stereo: translate([1, 2], [-1, 1], num),
 						format_diff: diff => {
-							if (diff == 0) return String(diff);
+							if (diff == 0) return '+     0';
 							if (diff > 0) return format_diff_common('+', Math.abs(diff));
 							if (diff < 0) return format_diff_common('-', Math.abs(diff));
 						},
-						diff_color_gradient: new Gradient('#0eff0e', '#ffffff', '#fd0009'), // green - orange - red
+						diff_color_gradient: new Gradient('#0eff0e', '#ffffff', '#fd0009'), // green - white - red
 					}
 				);
 
@@ -196,32 +153,6 @@
 			});
 
 			const competition = new Competition(players);
-
-			// yuk, encapsulation down the toilet T_T
-			competition.API._repaintVictories = function (player_idx) {
-				const player = players[player_idx]; // direct access... not great
-				const victories = this.victories[player_idx];
-				const hearts = player.dom.hearts;
-
-				if (!hearts || !hearts.childNodes) return;
-
-				// clear all the hearts
-				while (hearts.childNodes.length) {
-					hearts.removeChild(hearts.childNodes[0]);
-				}
-
-				// reset to specified value
-				for (let idx = 0; idx < this.first_to; idx++) {
-					const heart = document.createElement('div');
-					heart.innerHTML = '&nbsp;';
-
-					if (idx < victories) {
-						heart.classList.add('win');
-					}
-
-					hearts.prepend(heart);
-				}
-			};
 		</script>
 		<script type="module" src="//localhost:8516/play_screen.bundle.js"></script>
 	</body>

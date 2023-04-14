@@ -460,7 +460,7 @@ export default class Player {
 			});
 
 			this.curtain_container.appendChild(custom_logo);
-			this.curtain_container.appendChild(small_nestrischamps_logo);
+			// this.curtain_container.appendChild(small_nestrischamps_logo);
 		} else {
 			const big_nestrischamps_logo = document.createElement('img');
 			big_nestrischamps_logo.classList.add('logo');

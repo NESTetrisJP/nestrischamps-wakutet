@@ -1,3 +1,10 @@
+@import url('https://fonts.googleapis.com/css?family=M+PLUS+1p');
+
+@font-face {
+	font-family: 'Misaki Gothic';
+	src: url('/fonts/misaki_gothic.ttf');
+}
+
 #stream_bg {
 	width: 1920px;
 	height: 1000px;
@@ -56,6 +63,7 @@
 .score {
 	grid-area: score;
 	padding: 3px;
+	width: 224px;
 	height: 100px;
 	margin-top: auto;
 }
@@ -117,6 +125,18 @@
 	padding: 3px;
 }
 
+.drought {
+	opacity: 0;
+	display: none;
+	color: red;
+}
+
+.drought.active {
+	display: block;
+	animation: fadeIn ease 1s;
+	animation-fill-mode: forwards;
+}
+
 .info .tetris_rate {
 	grid-area: trt;
 	width: 78px;
@@ -133,38 +153,66 @@
 	height: 716px;
 }
 
-.name {
+.names {
 	grid-area: name;
 	height: 28px;
+	display: flex;
+}
+
+.profile {
+	grid-area: board;
+	z-index: 1;
+	width: 356px;
+	height: 716px;
+	margin: auto;
+	background: black;
+	opacity: 0.9;
+	font-family: 'M PLUS 1p';
+	transition: opacity;
+	transition-duration: 0.5s;
+}
+
+.profile.profile-hidden {
+	opacity: 0;
+}
+
+.p1 .names {
+	flex-direction: row;
+}
+
+.p2 .names {
+	flex-direction: row-reverse;
+}
+
+.names .name {
+	flex-grow: 1;
+	font-family: 'Misaki Gothic';
+	text-align: center;
+}
+
+.names .hearts {
+	width: 100px;
+	text-align: right;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.p1 .names .hearts {
+	flex-direction: row;
+}
+
+.p2 .names .hearts {
+	flex-direction: row-reverse;
+}
+
+.names .hearts .unlit {
+	color: lightgray;
+}
+
+.names .hearts .lit {
+	color: red;
 }
 
 .hidden {
 	display: none;
-}
-
-/* TODO: ↓ */
-
-.hearts {
-	position: absolute;
-	color: #b0afb0;
-	letter-spacing: 8px;
-	text-align: center;
-	--offset: 328px;
-	right: var(--offset);
-}
-
-.hearts .win {
-	color: #fb0204;
-}
-
-.drought {
-	opacity: 0;
-	display: none;
-	color: red;
-}
-
-.drought.active {
-	display: block;
-	animation: fadeIn ease 1s;
-	animation-fill-mode: forwards;
 }
