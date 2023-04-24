@@ -37,8 +37,8 @@ class MatchRoom extends Room {
 			bestof: 3,
 			concurrent_2_matches: undefined, // undefined|true|false
 			selected_match: null, // 0|1|null
-			curtain_logo: null, // url to image or null
-			autojoin: false,
+			curtain_logo: 'http://localhost:8516/images/brand.png', // url to image or null
+			autojoin: true,
 			players: [
 				// flat user objects - starts with 2 players
 				getBasePlayerData(),
@@ -304,7 +304,7 @@ class MatchRoom extends Room {
 
 	autoJoinUser(user) {
 		for (let idx = 0; idx < this.getMaxPossiblePlayers(); idx++) {
-			if (!this.state.players[idx]?.id) {
+			if (!this.state.players[idx]?.id && Number(user.id) == idx + 1) {
 				this.setPlayer(idx, user.id);
 				return true;
 			}
