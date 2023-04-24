@@ -86,6 +86,7 @@ const start = Date.now();
 // Hardcoding everything for now just for speed in getting something to look at.
 // TODO: look at Heroku Build Packs: https://www.heroku.com/elements/buildpacks,
 // or look at deploying via a github action, see https://github.com/marketplace/actions/deploy-to-heroku
+/*
 for (const [name, layout] of Object.entries(layouts)) {
 	const path = `public/views/${layout.type}/${layout.file}.html`;
 
@@ -102,6 +103,7 @@ for (const [name, layout] of Object.entries(layouts)) {
 		);
 	}
 }
+*/
 
 const elapsed = Date.now() - start;
 
