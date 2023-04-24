@@ -127,14 +127,11 @@
 
 .drought {
 	opacity: 0;
-	display: none;
 	color: red;
 }
 
 .drought.active {
-	display: block;
-	animation: fadeIn ease 1s;
-	animation-fill-mode: forwards;
+	opacity: revert;
 }
 
 .info .tetris_rate {
