@@ -1,8 +1,12 @@
+import { StatsD } from 'hot-shots';
+
 import middlewares from '../modules/middlewares.js';
 import layouts from '../modules/layouts.js';
 import UserDAO from '../daos/UserDAO.js';
 import Replay from '../domains/Replay.js';
 import Connection from '../modules/Connection.js';
+
+const statsdClient = new StatsD();
 
 export default function init(server, wss) {
 	server.on('upgrade', async function (request, socket, head) {
@@ -205,6 +209,11 @@ export default function init(server, wss) {
 
 			return;
 		}
+
+		statsdClient.increment('ntc.websocket.connection', 1, 1, {
+			is_secret_view: request.is_secret_view ? 1 : 0,
+			is_secret_producer: request.is_secret_producer ? 1 : 0,
+		});
 
 		console.log(
 			'WS: Connection!',

@@ -1,0 +1,20 @@
+<script src="https://www.datadoghq-browser-agent.com/us1/v4/datadog-rum.js" type="text/javascript"></script>
+<script>
+    window.DD_RUM && window.DD_RUM.init({
+      clientToken: 'pubded15c2f3614bf7498ca81afb7206194',
+      applicationId: 'a22902d9-21d5-487e-91a4-967641cfb326',
+      site: 'datadoghq.com',
+      service: 'nestrischamps-web',
+      env: 'production',
+      version: '1.0.0',
+      sessionSampleRate: 100,
+      sessionReplaySampleRate: 0,
+      trackUserInteractions: true,
+      trackResources: true,
+      trackLongTasks: true,
+      defaultPrivacyLevel: 'mask-user-input',
+    });
+
+    window.DD_RUM &&
+    window.DD_RUM.startSessionReplayRecording();
+</script>
