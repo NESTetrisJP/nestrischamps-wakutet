@@ -83,6 +83,9 @@ if (process.env.IS_PUBLIC_SERVER) {
 				rows.push({
 					id: data[0],
 					login: `player${data[0]}`,
+					email: `player${data[0]}@nestrischamps.io`,
+					secret: `PLAYER${data[0]}`,
+					display_name: `player${data[0]}`,
 				});
 				break;
 			default:
