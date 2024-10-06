@@ -19,6 +19,14 @@ router.get('/', (req, res) => {
 	res.render('intro');
 });
 
+router.get('/privacy', (req, res) => {
+	res.render('privacy');
+});
+
+router.get('/terms', (req, res) => {
+	res.render('terms');
+});
+
 router.get(
 	'/room/admin',
 	middlewares.assertSession,
@@ -26,7 +34,7 @@ router.get(
 	async (req, res) => {
 		const data = { countries };
 
-		if (process.env.IS_PUBLIC_SERVER) {
+		if (process.env.IS_PUBLIC_SERVER === '1') {
 			data.users = null;
 		} else {
 			data.users = await UserDAO.getAssignableUsers();
@@ -66,27 +74,42 @@ router.get(
 /**/
 
 router.get(
-	'/room/producer',
+	/^\/room\/(producer|emu)/,
 	middlewares.assertSession,
 	middlewares.checkToken,
 	(req, res) => {
-		res.sendFile(path.join(path.resolve(), 'public/ocr/ocr.html'));
+		req.originalUrl;
+		res.sendFile(
+			path.join(
+				path.resolve(),
+				`public${
+					/producer/.test(req.path) ? '/ocr/ocr.html' : '/emu/index.html'
+				}`
+			)
+		);
 	}
 );
 
 router.get(
-	'/room/u/:login/producer',
+	/^\/room\/u\/([^/]+)\/(producer|emu)/,
 	middlewares.assertSession,
 	middlewares.checkToken,
 	async (req, res) => {
-		const target_user = await UserDAO.getUserByLogin(req.params.login);
+		const target_user = await UserDAO.getUserByLogin(req.params[0]);
 
 		if (!target_user) {
 			res.status(404).send('Target User Not found');
 			return;
 		}
 
-		res.sendFile(path.join(path.resolve(), 'public/ocr/ocr.html'));
+		res.sendFile(
+			path.join(
+				path.resolve(),
+				`public${
+					/producer/.test(req.path) ? '/ocr/ocr.html' : '/emu/index.html'
+				}`
+			)
+		);
 	}
 );
 

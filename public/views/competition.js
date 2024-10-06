@@ -6,6 +6,8 @@ import {
 	peerServerOptions,
 } from '/views/constants.js';
 
+import { MatchCommentatorBot } from '/views/commentator_bot.js';
+
 // very simple RPC system to allow server to send data to client
 
 let players;
@@ -282,7 +284,13 @@ export class Competition {
 
 		this.API = new TetrisCompetitionAPI();
 
-		Object.assign(this.API, api_overrides);
+		// make old methods available - equivalent to super)
+		const originals = {};
+		for (const name in api_overrides) {
+			originals[`__${name}`] = this.API[name];
+		}
+
+		Object.assign(this.API, originals, api_overrides);
 
 		this.connection = new Connection(null, this.view_meta);
 
@@ -367,6 +375,11 @@ export class Competition {
 			_players.forEach(player => {
 				player.dom.video.style.display = 'none';
 			});
+		}
+
+		// Primitive combot supported in all competitions layouts, but ONLY for Match 1 for 2 players
+		if (QueryString.get('combot') === '1' && _players.length >= 2) {
+			this.commentatorBot = new MatchCommentatorBot(_players.slice(0, 2));
 		}
 	}
 

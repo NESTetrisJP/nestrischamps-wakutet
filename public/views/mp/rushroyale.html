@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<link rel="stylesheet" type="text/css" href="/views/tetris.css" />
+		<link rel="stylesheet" type="text/css" href="/views/mmp.css" />
+		<style>
+			.player {
+				--p-row1-top: 10px;
+				--p-row2-top: 525px;
+				--p-offset: 374px;
+				--p-left-x: 38px;
+				--p-right-x: 1280px;
+				--p-video-width: 112px;
+
+				top: var(--p-row1-top);
+			}
+
+			.player .score {
+				top: 0;
+			}
+			.player .board {
+				top: 77px;
+			}
+
+			.player .video {
+				--width: var(--p-video-width);
+				width: var(--p-video-width);
+			}
+
+			.player .video video {
+				background-size: cover;
+				background-repeat: no-repeat;
+			}
+
+			.badges {
+				position: absolute;
+				width: var(--p-video-width);
+				height: 44px;
+				/* background-color: rgb(255, 255, 0, 0.5); */
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				gap: 0.5em;
+			}
+
+			.badge {
+				display: inline-block;
+				width: 40px;
+				height: 44px;
+				overflow: hidden;
+				color: black;
+				font-size: 16px;
+				text-align: center;
+				line-height: 44px;
+				background: url(/views/badge.bg.png);
+				text-shadow: 1px 1px 1px;
+			}
+
+			.player.left .video {
+				top: 110px;
+				left: 219px;
+			}
+
+			.player.left .badges {
+				top: 96px;
+				left: 234px;
+			}
+
+			.player.right .video {
+				top: 336px;
+				left: -133px;
+			}
+
+			.player.right .badges {
+				top: 322px;
+				left: -118px;
+			}
+
+			.player.first .box {
+				border-image-source: url(/views/border_3px_lead.png);
+			}
+
+			.player.penultimate .box {
+				border-image-source: url(/views/border_3px_penultimate.png);
+			}
+
+			.player.last .box {
+				border-image-source: url(/views/border_3px_last.png);
+			}
+
+			.player.p1 {
+				left: var(--p-left-x);
+			}
+			.player.p2 {
+				left: var(--p-right-x);
+			}
+			.player.p3 {
+				left: calc(var(--p-left-x) + var(--p-offset));
+			}
+			.player.p4 {
+				left: calc(var(--p-right-x) + var(--p-offset));
+			}
+			.player.p5 {
+				top: var(--p-row2-top);
+				left: var(--p-left-x);
+			}
+			.player.p6 {
+				top: var(--p-row2-top);
+				left: var(--p-right-x);
+			}
+			.player.p7 {
+				top: var(--p-row2-top);
+				left: calc(var(--p-left-x) + var(--p-offset));
+			}
+			.player.p8 {
+				top: var(--p-row2-top);
+				left: calc(var(--p-right-x) + var(--p-offset));
+			}
+
+			.leaderboard {
+				padding: 6px 18px;
+				top: 10px;
+				left: 677px;
+				width: 500px;
+				height: 978px;
+			}
+
+			.leaderboard .header {
+				font-size: 64px;
+				line-height: 88px;
+				padding-bottom: 1em;
+				padding-top: 0.5em;
+			}
+
+			.leaderboard .value {
+				columns: 1;
+			}
+
+			.leaderboard .value .entry {
+				color: white;
+				margin-bottom: 1.5em;
+				position: absolute;
+			}
+
+			.leaderboard.avatar .value .entry {
+				background-size: 66px 66px;
+				background-repeat: no-repeat;
+				padding-left: 74px;
+			}
+
+			.leaderboard.avatar .value .score2 {
+				width: 200px;
+			}
+
+			.leaderboard.avatar .value .diff {
+				width: 212px;
+			}
+
+			.leaderboard .value .entry.first {
+				color: #0eff0e;
+			}
+
+			.leaderboard .value .entry.penultimate {
+				color: #ffa500;
+			}
+
+			.leaderboard .value .entry.last {
+				color: #fd0009;
+			}
+
+			.leaderboard .value .entry.eliminated {
+				filter: grayscale(1) brightness(0.3);
+			}
+
+			.leaderboard .value .entry .name {
+				display: block;
+				text-align: left;
+				width: 100%;
+				padding-bottom: 0.25em;
+			}
+
+			@keyframes panic_colorize_wr {
+				from {
+					color: white;
+				}
+				to {
+					color: red;
+				}
+			}
+
+			.leaderboard.warn .header {
+				animation: panic_colorize_wr 0.5s infinite;
+				animation-direction: alternate;
+			}
+
+			.leaderboard.panic .header {
+				animation: panic_colorize_wr 0.25s infinite;
+				animation-direction: alternate;
+			}
+
+			.player.eliminated {
+				filter: grayscale(1) brightness(0.3);
+			}
+		</style>
+	</head>
+	<body>
+		<div id="stream_bg">
+			<div class="box leaderboard avatar">
+				<div class="header">00.00</div>
+				<div class="value"></div>
+			</div>
+
+			<template id="player">
+				<div class="player">
+					<div class="box video"><video class="player_vid"></video></div>
+
+					<div class="box board">
+						<div class="lines">000</div>
+						<div class="next_piece"></div>
+					</div>
+
+					<div class="box score">
+						<div class="header">PLAYER</div>
+						<div class="value">0000000</div>
+					</div>
+					<div class="badges"></div>
+				</div>
+			</template>
+
+			<template id="rank">
+				<div class="entry">
+					<span class="name">PLAYER</span>
+					<span class="score2">0</span>
+					<span class="diff">0</span>
+				</div>
+			</template>
+		</div>
+		<!-- End Stream BG -->
+
+		<!-- Audio -->
+		<script>
+			// custom view parameters which will be passed in the websocket URI
+			const view_meta = new URLSearchParams({
+				video: '352x240',
+				players: 8,
+			});
+		</script>
+		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script type="module">
+			import '/views/bg.js';
+			import QueryString from '/js/QueryString.js';
+			import { peerServerOptions } from '/views/constants.js';
+			import { translate, readableScoreFomatter, peek } from '/views/utils.js';
+			import Player from '/views/Player.js';
+			import Competition from '/views/competition.js';
+
+			function easeOutQuart(t, b, c, d) {
+				return -c * ((t = t / d - 1) * t * t * t - 1) + b;
+			}
+
+			let adjusRankToID;
+
+			const stream_bg = document.getElementById('stream_bg');
+			const rank_template = document.getElementById('rank');
+			const player_template = document.getElementById('player');
+			const leaderboard = document.querySelector('.leaderboard');
+			const leaderboard_values = document.querySelector('.leaderboard  .value');
+			// const color_gradient = new Gradient( // green - orange - red
+			// 	'#0eff0e',
+			// 	new Color(255, 165, 0),
+			// 	'#fd0009'
+			// );
+
+			const rankYOffsets = [190, 292, 394, 496, 598, 700, 802, 904];
+
+			if (QueryString.get('avatar') === '0') {
+				leaderboard.classList.remove('avatar');
+			}
+
+			const players_re = /^[2345678]$/;
+			const player_width = 228;
+			const players = [];
+
+			let num_players = 8;
+
+			if (players_re.test(QueryString.get('players'))) {
+				num_players = parseInt(QueryString.get('players'), 10);
+			}
+
+			const cycle_match = (QueryString.get('cycle') || '').match(
+				/^[1-9]\d+,[1-9]\d+(,\d+,\d+)?$/
+			);
+			const cycle_settings = {
+				initial_round: 90,
+				subsequent_rounds: 60,
+				warn: 16,
+				panic: 8,
+			};
+
+			if (cycle_match) {
+				const values = QueryString.get('cycle')
+					.split(',')
+					.map(v => parseInt(v, 10));
+				if (!cycle_match[1]) {
+					if (values[0] >= 10 && values[0] >= values[1]) {
+						cycle_settings.initial_round = values[0];
+						cycle_settings.subsequent_rounds = values[1];
+					}
+				} else {
+					if (
+						values[0] >= 10 &&
+						values[0] >= values[1] &&
+						values[0] >= values[2] &&
+						values[2] >= values[3]
+					) {
+						cycle_settings.initial_round = values[0];
+						cycle_settings.subsequent_rounds = values[1];
+						cycle_settings.warn = values[2];
+						cycle_settings.panic = values[3];
+					}
+				}
+			}
+
+			function getSortedPlayers() {
+				const sorted_players = [...players].sort((p1, p2) => {
+					const p1_score = p1.getScore();
+					const p2_score = p2.getScore();
+					return p1_score === p2_score ? p1.idx - p2.idx : p2_score - p1_score;
+				});
+
+				const active_players = sorted_players.filter(
+					player =>
+						!player.game?.over &&
+						!player.dom.full_node.classList.contains('eliminated')
+				);
+
+				return { sorted_players, active_players };
+			}
+
+			function updateScore() {
+				const { sorted_players, active_players } = getSortedPlayers();
+
+				const top_score = sorted_players[0].getScore();
+
+				sorted_players.forEach((player, idx) => {
+					player.dom.full_node.classList.remove('first', 'last', 'penultimate');
+					player.dom.rank_node.classList.remove('first', 'last', 'penultimate');
+					player.dom.rank_node.targetTop = rankYOffsets[idx];
+
+					if (idx > 0) {
+						const diff = top_score - player.getScore();
+						player.dom.rank_node.querySelector('.diff').textContent =
+							'+' + readableScoreFomatter(diff);
+					} else {
+						player.dom.rank_node.querySelector('.diff').textContent = '';
+					}
+				});
+
+				if (active_players.length >= 3) {
+					peek(active_players, 1).dom.full_node.classList.add('penultimate');
+					peek(active_players, 1).dom.rank_node.classList.add('penultimate');
+				}
+				if (active_players.length >= 2) {
+					peek(active_players).dom.full_node.classList.add('last');
+					peek(active_players).dom.rank_node.classList.add('last');
+				}
+
+				sorted_players[0].dom.full_node.classList.add('first');
+				sorted_players[0].dom.rank_node.classList.add('first');
+			}
+
+			let cycle_end_ts;
+			let rafId;
+			let toId;
+			let cur_cycle_duration;
+			let lvl19 = null;
+			let lvl29 = null;
+
+			function reset() {
+				leaderboard.querySelector('.header').textContent = '-';
+				leaderboard.classList.remove('warn', 'panic');
+
+				toId = clearTimeout(toId);
+				rafId = window.cancelAnimationFrame(rafId);
+			}
+
+			function startRound() {
+				startCycle(cycle_settings.initial_round);
+				lvl19 = lvl29 = null; // to track badges
+				checkTime();
+			}
+
+			function checkTime() {
+				const remainder = (cycle_end_ts - Date.now()) / 1000;
+				let content = remainder.toFixed(2);
+
+				if (remainder < cycle_settings.panic) {
+					leaderboard.classList.remove('warn');
+					leaderboard.classList.add('panic');
+					content = `!${content}!`;
+				} else if (remainder < cycle_settings.warn) {
+					leaderboard.classList.add('warn');
+					// content = `! ${content} !`;
+				} else {
+					leaderboard.classList.remove('warn', 'panic');
+				}
+
+				leaderboard.querySelector('.header').textContent = content;
+
+				rafId = window.requestAnimationFrame(checkTime);
+			}
+
+			function startCycle(duration) {
+				cycle_end_ts = Date.now() + duration * 1000;
+				toId = setTimeout(endCycle, duration * 1000);
+			}
+
+			function endCycle() {
+				// figure out who to kick
+				const num_kicked = kickPlayer();
+
+				updateScore();
+
+				if (num_kicked) {
+					startCycle(cycle_settings.subsequent_rounds * num_kicked);
+				} else {
+					// round is over
+					reset();
+				}
+			}
+
+			function kickPlayer() {
+				const { sorted_players, active_players } = getSortedPlayers();
+
+				let cut_idx;
+
+				if (active_players.length >= 2) {
+					// grab all the tail players with the same score
+					const lastPlayer = peek(active_players);
+					const lastPlayerScore = lastPlayer.getScore();
+
+					cut_idx = active_players.length - 2;
+					while (active_players[cut_idx].getScore() === lastPlayerScore)
+						cut_idx--;
+
+					if (cut_idx === -1) {
+						// tie victory!
+						active_players.forEach(player => {
+							playe.game?.end();
+							playe.playWinnerAnimation();
+						});
+					} else {
+						for (let idx = cut_idx + 1; idx < active_players.length; idx++) {
+							const player = active_players[idx];
+
+							player.game?.end();
+							player.dom.full_node.classList.add('eliminated');
+							player.dom.rank_node.classList.add('eliminated');
+						}
+
+						if (cut_idx === 0) {
+							// we have a winner
+							sorted_players[0].game?.end();
+							sorted_players[0].playWinnerAnimation();
+						} else {
+							return active_players.length - cut_idx - 1; // return number of players kicked
+						}
+					}
+				}
+			}
+
+			window.players = players;
+			window.startRound = startRound;
+
+			// Updating the rank positions at 60fps
+			// TODO: don't animate when there's nothing to do
+			function adjustRanks() {
+				players.forEach(p => {
+					const rank_node = p.dom.rank_node;
+
+					if (rank_node.targetTop === rank_node.curTop) return;
+
+					if (Math.abs(rank_node.targetTop - rank_node.curTop) < 0.0001) {
+						rank_node.curTop = rank_node.targetTop;
+					} else {
+						rank_node.curTop = (rank_node.targetTop + rank_node.curTop) / 2;
+					}
+
+					rank_node.style.top = `${rank_node.curTop}px`;
+				});
+			}
+
+			adjusRankToID = setInterval(adjustRanks, 1000 / 30);
+
+			window.onload = () => {
+				// wait for css
+				const base_offset_y = 20;
+
+				Array(num_players)
+					.fill()
+					.forEach((_, player_idx) => {
+						const player_fragment = document.importNode(
+							player_template.content,
+							true
+						);
+						const player_node = player_fragment.querySelector('.player');
+
+						// simple formula to determine the type of video placement
+						const video_alignment = (player_idx >> 1) % 2 ? 'right' : 'left';
+
+						player_node.classList.add(`p${player_idx + 1}`, video_alignment);
+						stream_bg.appendChild(player_node);
+
+						const rank_fragment = document.importNode(
+							rank_template.content,
+							true
+						);
+						const rank_node = rank_fragment.querySelector('.entry');
+
+						// initial display into the leaderboard
+						rank_node.targetTop = rank_node.curTop = rankYOffsets[player_idx];
+						rank_node.style.top = `${rank_node.curTop}px`;
+						leaderboard_values.appendChild(rank_node);
+
+						const player = new Player(
+							{
+								name: player_node.querySelector(`.score .header`),
+								score: player_node.querySelector(`.score .value`),
+								lines: player_node.querySelector(`.board .lines`),
+								preview: player_node.querySelector(`.board .next_piece`),
+								field: player_node.querySelector(`.board`),
+								video: player_node.querySelector(`video`),
+								badges: player_node.querySelector(`.badges`),
+
+								full_node: player_node,
+								rank_node,
+							},
+							{
+								field_pixel_size: 2.5,
+								preview_pixel_size: 2,
+								preview_align: 'tr',
+								stereo: translate([0, num_players - 1], [-1, 1], player_idx),
+								format_score: readableScoreFomatter,
+							}
+						);
+
+						// adding extra properties to track
+						player.idx = player_idx; // For stable sort -_-
+
+						player.__setName = player.setName;
+						player.setName = function (name) {
+							this.__setName(name);
+							this.dom.rank_node.querySelector('.name').textContent =
+								name || '';
+						};
+
+						player.__setAvatar = player.setAvatar;
+						player.setAvatar = function (url) {
+							if (QueryString.get('avatar') === '0') return;
+							// TODO Should validate that url is safe for string interpolation
+							this.dom.video.style.backgroundImage = `url(${url})`;
+							this.dom.rank_node.style.backgroundImage = `url(${url})`;
+
+							// we're not calling the original avatar, because we don't want to show it the avatars in the play field
+							// this.__setAvatar(url);
+						};
+
+						player.onGameStart = function () {
+							this.dom.lines.hidden = false;
+							this.dom.preview.hidden = false;
+						};
+
+						player.onGameOver = function () {
+							this.dom.lines.hidden = true;
+							this.dom.preview.hidden = true;
+						};
+
+						player.onLevel = function (frame) {
+							if (frame.raw.level === 19) {
+								if (lvl19) return;
+
+								// first to 19!
+								lvl19 = this;
+
+								const badge = document.createElement('span');
+								badge.classList.add('badge');
+								badge.textContent = 19;
+
+								player.dom.badges.appendChild(badge);
+							} else if (frame.raw.level === 29) {
+								if (lvl29) return;
+
+								// first to 29!
+								lvl29 = this;
+
+								const badge = document.createElement('span');
+								badge.classList.add('badge');
+								badge.textContent = 29;
+
+								player.dom.badges.appendChild(badge);
+							}
+						};
+
+						player.onGameOver();
+
+						players.push(player);
+					});
+
+				let countDownTimeoutId;
+				const competition = new Competition(players, {
+					startCountDown: function (seconds) {
+						countDownTimeoutId = clearTimeout(countDownTimeoutId);
+						reset();
+
+						players.forEach(player => {
+							const classes = ['eliminated', 'first', 'last', 'penultimate'];
+							player.dom.full_node.classList.remove(...classes);
+							player.dom.rank_node.classList.remove(...classes);
+							player.dom.badges.replaceChildren();
+						});
+
+						this.__startCountDown(seconds);
+						countDownTimeoutId = setTimeout(startRound, seconds * 1000);
+
+						leaderboard.querySelector('.header').textContent =
+							cycle_settings.initial_round.toFixed(2);
+					},
+				});
+
+				players.forEach(player => {
+					player.onScore = () => {
+						player.dom.rank_node.querySelector('.score2').textContent =
+							readableScoreFomatter(player.getScore());
+						updateScore();
+					};
+				});
+
+				window.competition = competition;
+
+				updateScore();
+			};
+
+			if (/^\/replay\//.test(location.pathname)) {
+				startRound();
+			}
+
+			// TODO: hijack countdown API to be a startRound()
+		</script>
+	</body>
+</html>

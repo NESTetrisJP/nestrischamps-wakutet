@@ -2,9 +2,9 @@ import QueryString from '/js/QueryString.js';
 import { assignUserVoice, speak } from '/views/tts.js';
 
 const botName = '_ntc_commentator_bot';
-const lang = /^[a-z]{2}(-[A-Z]{2})?$/.test(QueryString.get('lang'))
+const lang = /^(en|fr)(-[A-Z]{2})?$/.test(QueryString.get('lang')) // only 2 languages supported, French and English
 	? QueryString.get('lang')
-	: navigator.languages?.[0] || 'en';
+	: 'en';
 const voiceNameRe =
 	QueryString.get('botvoice') && /^[a-z]+$/i.test(QueryString.get('botvoice'))
 		? new RegExp(`^${QueryString.get('botvoice')}`, 'i')
@@ -21,7 +21,7 @@ export class MatchCommentatorBot {
 			return;
 		}
 
-		assignUserVoice(botName, { voiceNameRe });
+		assignUserVoice(botName, { voiceNameRe, lang });
 
 		this.players = players;
 
@@ -50,39 +50,66 @@ export class MatchCommentatorBot {
 
 		if (!otherPlayer.game) return;
 		if (otherPlayer.game.over) {
-			if (player.getScore() > otherPlayer.getScore()) {
+			// Both player dead, the outcome of the game is known!
+			if (player.getScore() === otherPlayer.getScore()) {
 				speak(
 					{
 						username: botName,
 						rate: botRate,
 						message: lang.startsWith('fr')
-							? `Player ${
-									playerIdx + 1
-							  } takes the game with ${this.#getEnglishScore(
-									player.getScore()
-							  )}.`
-							: `Joueur ${playerIdx + 1} gagne avec ${this.#getFrenchScore(
-									player.getScore()
-							  )}.`,
+							? `Incroyable! Egalité à ${player.getScore()}.`
+							: `Amazing! We have a tie at ${player.getScore()}.`,
 					},
 					{
 						now: true,
 					}
 				);
+
+				return;
 			}
-		} else if (player.getScore() > otherPlayer.getScore()) {
+
+			let winnerIdx, winner;
+
+			if (player.getScore() > otherPlayer.getScore()) {
+				winnerIdx = playerIdx;
+				winner = player;
+			} else {
+				winnerIdx = otherPlayerIdx;
+				winner = otherPlayer;
+			}
+
+			speak(
+				{
+					username: botName,
+					rate: botRate,
+					message: lang.startsWith('fr')
+						? `Joueur ${winnerIdx + 1} gagne avec ${this.#getFrenchScore(
+								winner.getScore()
+						  )}.`
+						: `Player ${
+								winnerIdx + 1
+						  } takes the game with ${this.#getEnglishScore(
+								winner.getScore()
+						  )}.`,
+				},
+				{
+					now: true,
+				}
+			);
+		} else if (player.getScore() >= otherPlayer.getScore()) {
+			// other player NOT dead AND behind in score, this is a chase down!
 			const upperThousand = Math.floor(player.getScore() / 1000) + 1; // not using ceil because we need a strict +1
 			speak(
 				{
 					username: botName,
 					rate: botRate,
 					message: lang.startsWith('fr')
-						? `CHASE DOWN! Player ${
+						? `POURCHASSE! Objectif ${this.#getFrenchScore(
+								upperThousand * 1000
+						  )} pour Joueur ${otherPlayerIdx + 1}`
+						: `CHASE DOWN! Player ${
 								otherPlayerIdx + 1
-						  } needs ${this.#getEnglishScore(upperThousand * 1000)}.`
-						: `COURSE! Joueur ${
-								otherPlayerIdx + 1
-						  } a besoin de ${this.#getFrenchScore(upperThousand * 1000)}.`,
+						  } needs ${this.#getEnglishScore(upperThousand * 1000)}.`,
 				},
 				{
 					now: true,

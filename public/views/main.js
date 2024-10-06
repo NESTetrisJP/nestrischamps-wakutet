@@ -16,10 +16,7 @@ import {
 	PIECE_COLORS,
 	DROUGHT_PANIC_THRESHOLD,
 	DAS_THRESHOLDS,
-	peerServerOptions,
 } from '/views/constants.js';
-
-export const BLOCK_PIXEL_SIZE = 3;
 
 const dom = new DomRefs(document);
 
@@ -65,7 +62,50 @@ const API = {
 	player_data: renderPastGamesAndPBs,
 	frame: (idx, data) => frame_buffer.setFrame(data),
 	scoreRecorded: getStats,
+	setVdoNinjaURL: setVdoNinjaURL,
 };
+
+let vdoIframe = null;
+
+function setVdoNinjaURL(_idx, url) {
+	if (QueryString.get('video') === '0') return;
+
+	if (!url && vdoIframe) {
+		vdoIframe.remove();
+		vdoIframe = null;
+		return;
+	}
+
+	if (!vdoIframe) {
+		vdoIframe = document.createElement('iframe');
+		vdoIframe.setAttribute(
+			'allow',
+			'autoplay;camera;microphone;fullscreen;picture-in-picture;display-capture;midi;geolocation;gyroscope;'
+		);
+		vdoIframe.style.border = 0;
+	}
+
+	const u = new URL(url);
+
+	const streamId = u.searchParams.get('view') || u.searchParams.get('push'); // just in case someone passed the push url
+
+	u.searchParams.delete('push');
+	u.searchParams.set('view', streamId);
+	u.searchParams.set('cover', 1);
+	u.searchParams.set('cleanviewer', 1);
+	u.searchParams.set('cleanoutput', 1);
+	u.searchParams.set('transparent', 1);
+	u.searchParams.set('autostart', 1);
+
+	vdoIframe.src = u.toString();
+
+	const container = document.querySelector('#video');
+
+	if (container) {
+		container.textContent = '';
+		container.appendChild(vdoIframe);
+	}
+}
 
 const tetris_sound = new Audio('/views/Tetris_Clear.mp3');
 tetris_sound.volume = 0.35;
@@ -179,40 +219,6 @@ function getStats() {
 	}
 }
 
-function clearStage() {
-	dom.droughts.cur.ctx.clear();
-	dom.droughts.last.ctx.clear();
-	dom.droughts.max.ctx.clear();
-
-	dom.pieces.element.classList.remove(
-		'l0',
-		'l1',
-		'l2',
-		'l3',
-		'l4',
-		'l5',
-		'l6',
-		'l7',
-		'l8',
-		'l9'
-	);
-	dom.next.element.classList.remove(
-		'l0',
-		'l1',
-		'l2',
-		'l3',
-		'l4',
-		'l5',
-		'l6',
-		'l7',
-		'l8',
-		'l9'
-	);
-
-	stage_currently_rendered = null;
-	next_piece_currently_rendered = null;
-}
-
 function renderPastGamesAndPBs(data) {
 	// pbs
 	data.pbs.forEach(record => {
@@ -245,10 +251,6 @@ function renderPastGamesAndPBs(data) {
 		}
 	});
 
-	// Disgusting hardcoded values below T_T
-	const num_scores_to_show =
-		dom.high_scores.element.clientHeight > 200 ? 10 : 5;
-
 	// high scores
 	['session', 'overall'].forEach(category => {
 		if (data.high_scores[category].length <= 0) {
@@ -256,7 +258,7 @@ function renderPastGamesAndPBs(data) {
 		}
 
 		dom.high_scores[category].innerHTML = data.high_scores[category]
-			.slice(0, num_scores_to_show)
+			.slice(0, NUM_HIGH_SCORES)
 			.map(record => {
 				if (!record || record.start_level == null) {
 					record = {
@@ -385,7 +387,7 @@ function renderLines(frame) {
 
 	// Update running tetris rate graph
 	const trt_ctx = dom.lines_stats.trt_ctx,
-		pixel_size = 4,
+		pixel_size = DOT_SIZE_TRT,
 		max_pixels = Math.floor(trt_ctx.canvas.width / (pixel_size + 1)),
 		y_scale = (trt_ctx.canvas.height - pixel_size) / pixel_size,
 		to_draw = frame.clears.slice(-1 * max_pixels);
@@ -469,7 +471,7 @@ function renderPiece(frame) {
 	);
 
 	// Render piece distribution graphs
-	let pixel_size = 4,
+	let pixel_size = DOT_SIZE_PIECE_DISTRIBUTION,
 		max_pixels = Math.floor(dom.pieces.T.ctx.canvas.width / (pixel_size + 1)),
 		draw_start = Math.max(0, frame.pieces.length - max_pixels);
 
@@ -482,10 +484,13 @@ function renderPiece(frame) {
 		dom.pieces[name].count.textContent = piece_data.count
 			.toString()
 			.padStart(3, '0');
+		dom.pieces[name].percent.textContent = getPercent(piece_data.percent);
 		dom.pieces[name].drought.textContent = piece_data.drought
 			.toString()
 			.padStart(2, '0');
-		dom.pieces[name].percent.textContent = getPercent(piece_data.percent);
+		dom.pieces[name].max_drought.textContent = (piece_data.max_drought || 0)
+			.toString()
+			.padStart(2, '0');
 
 		ctx.resetTransform();
 		ctx.clear();
@@ -548,7 +553,7 @@ function renderPiece(frame) {
 		.toString()
 		.padStart(2, '0');
 
-	pixel_size = 2;
+	pixel_size = BAR_WIDTH_DROUGHT_GAUGE;
 	max_pixels = Math.floor(dom.droughts.cur.ctx.canvas.width / (pixel_size + 1));
 
 	const color = 'orange',
@@ -617,7 +622,7 @@ function renderInstantDas(das) {
 	dom.das.instant.textContent = das.toString().padStart(2, '0');
 
 	const ctx = dom.das.gauge_ctx,
-		pixel_size = 3,
+		pixel_size = BAR_WIDTH_INSTANT_DAS,
 		height = dom.das.gauge_ctx.canvas.height;
 
 	// TODO: optimize!
@@ -650,16 +655,19 @@ function renderDasNBoardStats(frame) {
 
 	dom.board_stats.ctx.clear();
 
-	const pixel_size = 4,
+	const pixel_size = DOT_SIZE_DAS_N_BOARD,
 		max_pixels = Math.floor(
 			dom.board_stats.ctx.canvas.width / (pixel_size + 1)
 		),
-		to_draw = frame.pieces.slice(-1 * max_pixels);
-
-	let cur_x = 0;
-
+		to_draw = frame.pieces.slice(-1 * max_pixels),
+		board_state_v_separator = 20 * (BOARD_HEIGHT_BLOCK_HEIGHT + 1);
 	dom.board_stats.ctx.fillStyle = BOARD_COLORS.floor;
-	dom.board_stats.ctx.fillRect(0, 60, dom.board_stats.ctx.canvas.width, 1);
+	dom.board_stats.ctx.fillRect(
+		0,
+		board_state_v_separator,
+		dom.board_stats.ctx.canvas.width,
+		1
+	);
 
 	for (let idx = 0; idx < to_draw.length; idx++) {
 		const piece = to_draw[idx];
@@ -681,7 +689,7 @@ function renderDasNBoardStats(frame) {
 			dom.das.ctx.fillStyle = color;
 			dom.das.ctx.fillRect(
 				idx * (pixel_size + 1),
-				(16 - das.cur) * (pixel_size - 1),
+				(16 - das.cur) * pixel_size,
 				pixel_size,
 				pixel_size
 			);
@@ -699,7 +707,7 @@ function renderDasNBoardStats(frame) {
 				idx * (pixel_size + 1) + pixel_size,
 				0,
 				1,
-				60
+				board_state_v_separator
 			);
 		}
 
@@ -708,17 +716,20 @@ function renderDasNBoardStats(frame) {
 		for (let yidx = 20; yidx-- > board_stats.top_idx; ) {
 			dom.board_stats.ctx.fillRect(
 				idx * (pixel_size + 1),
-				yidx * (pixel_size - 1),
+				yidx * (BOARD_HEIGHT_BLOCK_HEIGHT + 1),
 				pixel_size,
-				2
+				BOARD_HEIGHT_BLOCK_HEIGHT
 			);
 		}
+
+		const state_bars_y_baseline =
+			board_state_v_separator + 1 + BOARD_HEIGHT_STAT_BARS_GAP;
 
 		if (board_stats.tetris_ready) {
 			dom.board_stats.ctx.fillStyle = BOARD_COLORS.tetris_ready;
 			dom.board_stats.ctx.fillRect(
 				idx * (pixel_size + 1) - 1,
-				62,
+				state_bars_y_baseline,
 				pixel_size + 1,
 				pixel_size
 			);
@@ -728,7 +739,7 @@ function renderDasNBoardStats(frame) {
 			dom.board_stats.ctx.fillStyle = BOARD_COLORS.clean_slope;
 			dom.board_stats.ctx.fillRect(
 				idx * (pixel_size + 1) - 1,
-				67,
+				state_bars_y_baseline + (BOARD_HEIGHT_STAT_BARS_GAP + pixel_size) * 1,
 				pixel_size + 1,
 				pixel_size
 			);
@@ -738,7 +749,7 @@ function renderDasNBoardStats(frame) {
 			dom.board_stats.ctx.fillStyle = BOARD_COLORS.double_well;
 			dom.board_stats.ctx.fillRect(
 				idx * (pixel_size + 1) - 1,
-				72,
+				state_bars_y_baseline + (BOARD_HEIGHT_STAT_BARS_GAP + pixel_size) * 2,
 				pixel_size + 1,
 				pixel_size
 			);
@@ -748,7 +759,7 @@ function renderDasNBoardStats(frame) {
 			dom.board_stats.ctx.fillStyle = BOARD_COLORS.drought;
 			dom.board_stats.ctx.fillRect(
 				idx * (pixel_size + 1) - 1,
-				77,
+				state_bars_y_baseline + (BOARD_HEIGHT_STAT_BARS_GAP + pixel_size) * 3,
 				pixel_size + 1,
 				pixel_size
 			);
@@ -783,7 +794,7 @@ function renderStage(frame, force = false) {
 	}
 
 	const ctx = dom.stage.ctx,
-		pixels_per_block = BLOCK_PIXEL_SIZE * (7 + 1);
+		pixels_per_block = BOARD_PIXEL_SIZE * (7 + 1);
 
 	ctx.clear();
 
@@ -792,7 +803,7 @@ function renderStage(frame, force = false) {
 			renderBlock(
 				last_level,
 				field[y * 10 + x],
-				BLOCK_PIXEL_SIZE,
+				BOARD_PIXEL_SIZE,
 				ctx,
 				x * pixels_per_block,
 				y * pixels_per_block
@@ -816,31 +827,36 @@ function renderNextPiece(level, next_piece) {
 
 	const ctx = dom.next.ctx,
 		col_index = PIECE_COLORS[next_piece],
-		pixels_per_block = BLOCK_PIXEL_SIZE * (7 + 1),
+		pixels_per_block = PREVIEW_PIXEL_SIZE * (7 + 1),
 		x_offset_3 = Math.floor(
-			(ctx.canvas.width - pixels_per_block * 3 + BLOCK_PIXEL_SIZE) / 2
+			(ctx.canvas.width - pixels_per_block * 3 + PREVIEW_PIXEL_SIZE) / 2
 		),
 		positions = [];
 
 	ctx.clear();
 
 	let pos_x = 0,
-		pos_y = 0,
+		pos_y = Math.floor(
+			(ctx.canvas.height - pixels_per_block * 2 + PREVIEW_PIXEL_SIZE) / 2
+		),
 		x_idx = 0;
 
 	switch (next_piece) {
 		case 'I':
-			pos_y = Math.floor((ctx.canvas.height - BLOCK_PIXEL_SIZE * 7) / 2);
+			pos_x = Math.floor(
+				(ctx.canvas.width - pixels_per_block * 4 + PREVIEW_PIXEL_SIZE) / 2
+			);
+			pos_y = Math.floor((ctx.canvas.height - PREVIEW_PIXEL_SIZE * 7) / 2);
 
-			positions.push([x_idx++ * pixels_per_block, pos_y]);
-			positions.push([x_idx++ * pixels_per_block, pos_y]);
-			positions.push([x_idx++ * pixels_per_block, pos_y]);
-			positions.push([x_idx++ * pixels_per_block, pos_y]);
+			positions.push([pos_x + x_idx++ * pixels_per_block, pos_y]);
+			positions.push([pos_x + x_idx++ * pixels_per_block, pos_y]);
+			positions.push([pos_x + x_idx++ * pixels_per_block, pos_y]);
+			positions.push([pos_x + x_idx++ * pixels_per_block, pos_y]);
 			break;
 
 		case 'O':
 			pos_x = Math.floor(
-				(ctx.canvas.width - pixels_per_block * 2 + BLOCK_PIXEL_SIZE) / 2
+				(ctx.canvas.width - pixels_per_block * 2 + PREVIEW_PIXEL_SIZE) / 2
 			);
 
 			positions.push([pos_x, pos_y]);
@@ -889,7 +905,7 @@ function renderNextPiece(level, next_piece) {
 	}
 
 	positions.forEach(([pos_x, pos_y]) => {
-		renderBlock(level, col_index, BLOCK_PIXEL_SIZE, ctx, pos_x, pos_y);
+		renderBlock(level, col_index, PREVIEW_PIXEL_SIZE, ctx, pos_x, pos_y);
 	});
 }
 
@@ -968,42 +984,6 @@ if (!manageReplay(showFrame)) {
 			console.error(e);
 		}
 	};
-
-	/* check query string to see if video is active */
-	if (QueryString.get('video') === '1') {
-		const holder = document.querySelector('#video');
-		const video = document.createElement('video');
-
-		holder.innerHTML = '';
-		holder.appendChild(video);
-
-		let peer;
-
-		connection.onInit = () => {
-			if (peer) {
-				peer.destroy();
-				peer = null;
-			}
-
-			peer = new Peer(connection.id, peerServerOptions);
-
-			peer.on('call', call => {
-				call.answer(); // assume correct!
-				call.on('stream', remoteStream => {
-					video.autoplay = true;
-					video.srcObject = remoteStream;
-				});
-				call.on('error', () => {
-					video.pause();
-					video.srcObject = null;
-				});
-				call.on('close', () => {
-					video.pause();
-					video.srcObject = null;
-				});
-			});
-		};
-	}
 
 	// get High Scores
 	getStats();

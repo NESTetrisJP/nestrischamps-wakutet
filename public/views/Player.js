@@ -214,7 +214,7 @@ const DEFAULT_OPTIONS = {
 	tetris_flash: parseInt(
 		/^[01234]$/.test(QueryString.get('tetris_flash'))
 			? QueryString.get('tetris_flash')
-			: '1',
+			: '2',
 		10
 	),
 	tetris_sound: QueryString.get('tetris_sound') !== '0',
@@ -1029,7 +1029,7 @@ export default class Player extends EventTarget {
 
 	_resetFrameBuffer() {
 		if (this.frame_buffer) {
-			this.frame_buffer.destroy();
+			this.frame_buffer._destroy();
 		}
 
 		if (this.options.buffer_time) {

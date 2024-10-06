@@ -2,7 +2,7 @@ import ScoreFixer from '/ocr/ScoreFixer.js';
 import { PIECES, TRANSITIONS } from '/views/constants.js';
 import TetrisOCR from '/ocr/TetrisOCR.js';
 
-const BUFFER_MAXSIZE = 2; // all tracked changes are stable over 2 frames
+const BUFFER_MAXSIZE = 3; // all tracked changes are stable over 2 frames - using 3 for safety
 
 function peek(arr, offset = 0) {
 	return arr[arr.length - (offset + 1)];
@@ -44,6 +44,7 @@ export default class GameTracker {
 		this.start_level = 0;
 
 		this.score_frame_delay = 0;
+		this.lines_frame_delay = 0;
 		this.piece_frame_delay = 0;
 
 		this.palette = Array(10).fill();
@@ -93,9 +94,9 @@ export default class GameTracker {
 		return new_game_id;
 	}
 
-	async processFrame(bitmap, half_height) {
+	async processFrame(bitmap) {
 		// ======= OCR step 1 (Sanitize)
-		const last_frame = this.tetris_ocr.processsFrameStep1(bitmap, half_height);
+		const last_frame = this.tetris_ocr.processsFrameStep1(bitmap);
 
 		if (this.frame_buffer.length < BUFFER_MAXSIZE) {
 			this.frame_buffer.push(last_frame);
@@ -116,14 +117,26 @@ export default class GameTracker {
 		} else if (this.score_frame_delay === 0) {
 			this.frame_buffer.forEach(frame => {
 				frame.score = last_frame.score;
-				frame.lines = last_frame.lines;
-				frame.level = last_frame.level;
 			});
 		} else if (
 			!last_frame.gym_pause_active &&
 			!GameTracker.arrEqual(last_frame.score, peek(this.frame_buffer).score)
 		) {
 			this.score_frame_delay = this.frame_buffer.length;
+		}
+
+		if (--this.lines_frame_delay > 0) {
+			// just wait
+		} else if (this.lines_frame_delay === 0) {
+			this.frame_buffer.forEach(frame => {
+				frame.lines = last_frame.lines;
+				frame.level = last_frame.level;
+			});
+		} else if (
+			!last_frame.gym_pause_active &&
+			!GameTracker.arrEqual(last_frame.lines, peek(this.frame_buffer).lines)
+		) {
+			this.lines_frame_delay = this.frame_buffer.length;
 		}
 
 		// mutually exclusive checks for piece checks based on selected rom (classic, das trainer, minimal)
@@ -271,8 +284,8 @@ export default class GameTracker {
 
 		if (dispatch_frame.lines === null) {
 			lines = null;
-		} else if (this.cur_lines >= 300) {
-			// booohoo hardcoded value T_T
+		} else if (this.cur_lines >= 340) {
+			// Take over at level 40, which is after super kill screen (39) - Too bad for the harcoded value -_-'
 			const new_lines_units = peek(dispatch_frame.lines);
 			const cur_lines_units = this.cur_lines % 10;
 

@@ -45,7 +45,7 @@ class User extends EventEmitter {
 		this.leave_room_to = null;
 
 		// keep track of all socket for the user
-		// dangerous, could lead to memory if not managed well
+		// dangerous, could lead to memory leak if not managed well
 		this.destroy_to = null;
 		this.connections = new Set();
 
@@ -156,7 +156,7 @@ class User extends EventEmitter {
 
 	setTwitchToken(token) {
 		// in memory only, not in DB
-		this.token = token;
+		this.twitch_token = token;
 
 		if (this.connections.length) {
 			this._connectToTwitchChat();
@@ -164,7 +164,25 @@ class User extends EventEmitter {
 	}
 
 	hasTwitchToken() {
-		return !!this.token;
+		return !!this.twitch_token;
+	}
+
+	setDiscordToken(token) {
+		// in memory only, not in DB
+		this.discord_token = token;
+	}
+
+	hasDiscordToken() {
+		return !!this.discord_token;
+	}
+
+	setGoogleToken(token) {
+		// in memory only, not in DB
+		this.google_token = token;
+	}
+
+	hasGoogleToken() {
+		return !!this.google_token;
 	}
 
 	addConnection(conn) {
@@ -267,30 +285,35 @@ class User extends EventEmitter {
 
 	_onTwitchTokenRefreshed({ accessToken, refreshToken, expiresIn }) {
 		// How to update the session object(s) directly?
-		this.token.access_token = accessToken;
-		this.token.refresh_token = refreshToken;
-		this.token.expires_in = expiresIn;
+		this.twitch_token.access_token = accessToken;
+		this.twitch_token.refresh_token = refreshToken;
+		this.twitch_token.expires_in = expiresIn;
 	}
 
 	async _connectToTwitchChat() {
-		if (this.chat_client || !this.token) {
+		if (this.chat_client || !this.twitch_token?.id) {
 			return;
 		}
 
 		const twurpleToken = {
-			accessToken: this.token.access_token,
-			refreshToken: this.token.refresh_token,
+			accessToken: this.twitch_token.access_token,
+			refreshToken: this.twitch_token.refresh_token,
 			expiresIn: 0,
 			obtainmentTimestamp: 0,
 		};
 
-		twitchRefreshEmitter.addListener(this.id, this._onTwitchTokenRefreshed);
-		authProvider.addUser(this.id, twurpleToken, [`chat:${this.id}`]);
+		twitchRefreshEmitter.addListener(
+			this.twitch_token.id,
+			this._onTwitchTokenRefreshed
+		);
+		authProvider.addUser(this.twitch_token.id, twurpleToken, [
+			`chat:${this.twitch_token.id}`,
+		]);
 
 		this.chat_client = new ChatClient({
 			authProvider,
-			authIntents: [`chat:${this.id}`],
-			channels: [this.login],
+			authIntents: [`chat:${this.twitch_token.id}`],
+			channels: [this.twitch_token.login],
 			readOnly: true,
 			logger: {
 				minLevel: 'info',
@@ -318,8 +341,8 @@ class User extends EventEmitter {
 			this.send([
 				'message',
 				{
-					user: this.login,
-					username: this.login,
+					user: this.twitch_token.login,
+					username: this.twitch_token.login,
 					display_name: this.display_name,
 					message: `Thanks to ${user} for subscribing to the channel!`,
 				},
@@ -330,8 +353,8 @@ class User extends EventEmitter {
 			this.send([
 				'message',
 				{
-					user: this.login,
-					username: this.login,
+					user: user,
+					username: user,
 					display_name: raidInfo.displayName,
 					message: `Woohoo! ${raidInfo.displayName} is raiding with a party of ${raidInfo.viewerCount}. Thanks for the raid ${raidInfo.displayName}!`,
 				},
@@ -340,7 +363,9 @@ class User extends EventEmitter {
 
 		await this.chat_client.connect();
 
-		console.log(`TWITCH: chat_client connected for ${this.login}`);
+		console.log(
+			`TWITCH: chat_client connected for ${this.twitch_token.login} - ${this.twitch_token.id}`
+		);
 	}
 }
 
