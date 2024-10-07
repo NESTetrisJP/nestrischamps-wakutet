@@ -79,7 +79,7 @@ if (process.env.IS_PUBLIC_SERVER) {
 			case `DELETE FROM "sessions" WHERE sid = $1`:
 				sessions.delete(data[0]);
 				break;
-			case `SELECT * FROM twitch_users WHERE id=$1`:
+			case `SELECT * FROM users WHERE id=$1`:
 				rows.push({
 					id: data[0],
 					login: `player${data[0]}`,
