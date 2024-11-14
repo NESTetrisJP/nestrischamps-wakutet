@@ -231,6 +231,9 @@ rom_selector.addEventListener('change', evt => {
 	checkReadyToCalibrate();
 });
 
+// debug
+rom_selector.value = 'classic';
+
 capture_rate.addEventListener('change', updateFrameRate);
 
 function checkReadyToCalibrate() {
@@ -864,9 +867,12 @@ function hideParts() {
 }
 
 function resetShowPartsTimer() {
+	// disabled for wakuteto
+	/*
 	clearTimeout(hide_show_parts_timer);
 
 	hide_show_parts_timer = setTimeout(hideParts, 45000); // parts stop showing after 45s of static config
+	*/
 }
 
 function loadImage(img, src) {
