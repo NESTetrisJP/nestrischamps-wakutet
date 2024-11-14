@@ -51,7 +51,9 @@ export default class CompetitionPlayer extends Player {
 	reset() {
 		super.reset();
 
-		this.dom.diff.textContent = this.options.format_score(0);
+		this.dom.diff.textContent = this.options.format_diff
+			? this.options.format_diff(0)
+			: this.options.format_score(0);
 		this.dom.t_diff.textContent = this.options.format_tetris_diff(0);
 	}
 
@@ -72,7 +74,9 @@ export default class CompetitionPlayer extends Player {
 	setDiff(diff, t_diff, rank_ratio = 0) {
 		const absolute_diff = Math.abs(diff);
 		const absolute_t_diff = Math.abs(t_diff);
-		const formatted_diff = this.options.format_score(absolute_diff);
+		const formatted_diff = this.options.format_diff
+			? this.options.format_diff(diff)
+			: this.options.format_score(absolute_diff);
 		const lead_indicator =
 			!this.options.plus_minus_lead_indicator || diff === 0
 				? ''
@@ -127,7 +131,9 @@ export default class CompetitionPlayer extends Player {
 		this.dom.runway_diff.style.color = color;
 		this.dom.runway_t_diff.style.color = color;
 
-		this.dom.runway_diff.textContent = this.options.format_score(absolute_diff);
+		this.dom.runway_diff.textContent = this.options.format_diff
+			? this.options.format_diff(diff)
+			: this.options.format_score(absolute_diff);
 		this.dom.runway_t_diff.textContent =
 			this.options.format_tetris_diff(absolute_t_diff);
 	}
@@ -140,8 +146,9 @@ export default class CompetitionPlayer extends Player {
 		this.dom.projection_diff.style.color = color;
 		this.dom.projection_t_diff.style.color = color;
 
-		this.dom.projection_diff.textContent =
-			this.options.format_score(absolute_diff);
+		this.dom.projection_diff.textContent = this.options.format_diff
+			? this.options.format_diff(diff)
+			: this.options.format_score(absolute_diff);
 		this.dom.projection_t_diff.textContent =
 			this.options.format_tetris_diff(absolute_t_diff);
 	}
