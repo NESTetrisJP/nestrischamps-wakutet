@@ -168,7 +168,7 @@ device_selector.addEventListener('change', evt => {
 			use_half_height.parentNode.style.display = null;
 		}
 
-		saveConfig(config);
+		// saveConfig(config);
 		playVideoFromConfig();
 		checkReadyToCalibrate();
 	}
@@ -1100,7 +1100,7 @@ async function playVideoFromDevice(device_id, fps) {
 		const constraints = {
 			audio: false,
 			video: {
-				height: { ideal: 480 },
+				height: { ideal: 1080 },
 				frameRate: { ideal: fps }, // Should we always try to get the highest the card can support?
 			},
 		};
@@ -2106,8 +2106,8 @@ function showProducerUI() {
 
 		score7.checked = config.score7 === true;
 		use_half_height.checked = tmp_use_half_height;
-		allow_video_feed.checked = config.allow_video_feed != false;
-		focus_alarm.checked = config.focus_alarm != false;
+		allow_video_feed.checked = config.allow_video_feed == true;
+		focus_alarm.checked = config.focus_alarm == true;
 
 		const brightness = config.brightness === undefined ? 1 : config.brightness;
 		brightness_slider.value = config.brightness = brightness;
