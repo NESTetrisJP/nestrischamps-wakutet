@@ -380,6 +380,12 @@
 			</div>
 		</template>
 
+		<template id="curtain">
+			<div class="custom_curtain">
+				<img src="http://localhost:8514/images/brand.png" />
+			</div>
+		</template>
+
 		<div id="stream_bg"></div>
 
 		<script>
@@ -409,6 +415,8 @@
 			const player_small_template = document.getElementById('player_small');
 			const players = [];
 
+			const curtain_template = document.getElementById('curtain');
+
 			const format_diff_common = (prefix, absDiff) => {
 				const padded = String(absDiff).padStart(6, ' ');
 				if (padded.length > 6) return padded;
@@ -429,6 +437,12 @@
 							true
 						);
 						const player_node = player_fragment.querySelector('.player');
+						const curtain_fragment = document.importNode(
+							curtain_template.content,
+							true
+						);
+						const curtain_node =
+							curtain_fragment.querySelector('.custom_curtain');
 
 						player_node.classList.add(`p${player_num}`);
 						match_node.appendChild(player_node);
@@ -444,6 +458,7 @@
 								drought: player_node.querySelector(`.drought .value`),
 								diff: player_node.querySelector(`.score .diff`),
 								drought_box: player_node.querySelector(`.drought`),
+								curtain: curtain_node,
 							},
 							{
 								field_pixel_size: 4.5,
