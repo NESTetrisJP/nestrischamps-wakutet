@@ -7,6 +7,8 @@ import Producer from './Producer.js';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import { ChatClient } from '@twurple/chat';
 
+const TWITCH_CHAT_ENABLED = /^(1|true)$/i.test(process.env.TWITCH_CHAT_ENABLED);
+
 const USER_SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes before we destroy user! TODO: Make tunable
 const LEAVE_ROOM_TIMEOUT = 30 * 1000; // allow 30s to reconnect
 
@@ -22,9 +24,10 @@ const twitchRefreshEmitter = new TwitchRefreshEmitter();
 const authProvider = new RefreshingAuthProvider({
 	clientId: process.env.TWITCH_CLIENT_ID,
 	clientSecret: process.env.TWITCH_CLIENT_SECRET,
-	onRefresh: (userId, args) => {
-		twitchRefreshEmitter.emit(userId, args);
-	},
+});
+
+authProvider.onRefresh((userId, args) => {
+	twitchRefreshEmitter.emit(userId, args);
 });
 
 class User extends EventEmitter {
@@ -67,6 +70,7 @@ class User extends EventEmitter {
 
 		this.email = user_object.email;
 		this.display_name = user_object.display_name;
+		this.full_name = user_object.full_name;
 		this.pronouns = user_object.pronouns;
 		this.description = user_object.description;
 		this.profile_image_url = user_object.profile_image_url;
@@ -79,15 +83,27 @@ class User extends EventEmitter {
 		this.city = user_object.city || this.city || '';
 		this.timezone = user_object.timezone || this.timezone || 'UTC';
 		this.style = user_object.style || this.style || 'das';
+		this.controller = user_object.controller || this.controller || 'nes';
+		this.rival = user_object.rival || this.rival || '';
+		this.rival_reason = user_object.rival_reason || this.rival_reason || '';
 		this.interests = user_object.interests || this.interests || '';
 	}
 
 	setProducerConnection(
 		conn,
-		{ match = false, competition = false, target_user = null }
+		{
+			match = false,
+			competition = false,
+			target_user = null,
+			remote_calibration = false,
+		}
 	) {
 		this.addConnection(conn);
-		this.producer.setConnection(conn, { match, competition });
+		this.producer.setConnection(conn, {
+			match,
+			competition,
+			remote_calibration,
+		});
 
 		if (match) {
 			this.joinMatchRoom(target_user);
@@ -290,7 +306,9 @@ class User extends EventEmitter {
 		this.twitch_token.expires_in = expiresIn;
 	}
 
-	async _connectToTwitchChat() {
+	_connectToTwitchChat() {
+		if (!TWITCH_CHAT_ENABLED) return;
+
 		if (this.chat_client || !this.twitch_token?.id) {
 			return;
 		}
@@ -361,7 +379,7 @@ class User extends EventEmitter {
 			]);
 		});
 
-		await this.chat_client.connect();
+		this.chat_client.connect();
 
 		console.log(
 			`TWITCH: chat_client connected for ${this.twitch_token.login} - ${this.twitch_token.id}`

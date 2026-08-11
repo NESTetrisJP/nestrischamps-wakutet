@@ -32,46 +32,58 @@
 
 			.score,
 			.board,
-			.name,
-			.running_trt {
+			.name {
 				width: 356px;
 				--offset: -1px;
 			}
 
 			.score {
-				padding-left: 9px;
+				padding-left: 3px;
 				padding-right: 3px;
-				width: 344px;
+				width: 350px;
 				height: 96px;
 				font-size: 24px;
 			}
 
 			.score .header {
-				padding-bottom: 0;
+				padding-bottom: 5px;
 			}
 
-			.score .content > div {
-				display: flex;
-				flex-direction: row;
-				padding-top: 6px;
-
-				font-size: 32px;
-				line-height: 32px;
+			.score .aligner {
+				display: inline-block;
+				font-size: 32.01px;
+				line-height: 36px;
 			}
 
-			.score .main,
-			.score .diff {
-				white-space: pre;
-				text-align: left;
+			.qual .score .aligner {
+				line-height: 64px;
+				/* centralize name vertically */
+			}
+
+			.score .aligner .diff {
+				animation: var(--tdiff-anim) fadeIn;
+				opacity: 1;
 			}
 
 			.score .tetris_diff {
-				flex-grow: 1;
-				text-align: right;
+				margin-top: -36px;
+				line-height: 36px;
+				animation: var(--tdiff-anim) fadeOut;
+				opacity: 0;
+			}
 
-				padding-top: 14px;
-				font-size: 16px;
-				line-height: 16px;
+			.score.with_tdiff .tetris_diff {
+				animation: var(--tdiff-anim) fadeIn;
+				opacity: 1;
+			}
+
+			.score.with_tdiff .aligner .diff {
+				animation: var(--tdiff-anim) fadeOut;
+				opacity: 0;
+			}
+
+			.aligner div {
+				text-align: right;
 			}
 
 			.board {
@@ -88,6 +100,11 @@
 
 			.name {
 				height: 46px;
+			}
+
+			.qual .name {
+				line-height: 46px;
+				/* centralize name vertically */
 			}
 
 			.name .header {
@@ -145,10 +162,6 @@
 				width: 86px;
 			}
 
-			.running_trt {
-				display: none;
-			}
-
 			.drought {
 				color: red;
 
@@ -194,7 +207,8 @@
 
 			.match.small {
 				top: 0;
-				transform: scale(0.6916890080428955); /* (1080-32)/741/2 */
+				transform: scale(0.6916890080428955);
+				/* (1080-32)/741/2 */
 			}
 
 			#match2.small {
@@ -225,12 +239,13 @@
 			}
 
 			.match.small .score {
+				padding-left: 10px;
 				width: 259px;
 				top: 77px;
 			}
 
-			.match.small .score .tetris_diff {
-				display: none;
+			.match.small .tetris_diff {
+				font-size: 20px;
 			}
 
 			.match.small .next_piece {
@@ -285,6 +300,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<template id="player">
 			<div class="player">
@@ -304,14 +320,12 @@
 
 				<div class="box score">
 					<div class="header">SCORE</div>
-					<div class="content">
-						<div>
-							<div class="main">0&#x202F;000&#x202F;000</div>
-						</div>
-						<div>
-							<div class="diff winning">0&#x202F;000&#x202F;000</div>
-							<div class="tetris_diff"><span class="value">0.00</span>T</div>
-						</div>
+					<div class="aligner">
+						<div class="value">0&#x202F;000&#x202F;000</div>
+						<div class="diff">0&#x202F;000&#x202F;000</div>
+					</div>
+					<div class="tetris_diff">
+						<span class="value">0.00</span>&#x202F;TETRIS
 					</div>
 				</div>
 
@@ -333,7 +347,6 @@
 					<div class="content">---</div>
 				</div>
 
-				<div class="box running_trt"></div>
 				<div class="box flag"></div>
 
 				<div class="box name">
@@ -351,8 +364,8 @@
 		</template>
 
 		<div id="stream_bg">
-			<div id="match1" class="match small"></div>
-			<div id="match2" class="match small"></div>
+			<div id="match1" class="match"></div>
+			<div id="match2" class="match"></div>
 			<div id="branding"></div>
 		</div>
 
@@ -364,13 +377,17 @@
 				players: 4,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { translate, readableScoreFomatter } from '/views/utils.js';
 			import QueryString from '/js/QueryString.js';
 			import CTMCompetitionPlayer from '/views/CTMCompetitionPlayer.js';
 			import Competition from '/views/competition.js';
+
+			const CYCLE_TDIFF = /^\d+$/.test(QueryString.get('cycle_tdiff'))
+				? parseInt(QueryString.get('cycle_tdiff'), 10)
+				: 5; // default cycle is 5s
 
 			const player_template = document.getElementById('player');
 			const players = [];
@@ -391,11 +408,10 @@
 					const player = new CTMCompetitionPlayer(
 						{
 							name: player_node.querySelector(`.name .header`),
-							score: player_node.querySelector(`.score .main`),
+							score: player_node.querySelector(`.score .value`),
 							level: player_node.querySelector(`.level .content`),
 							lines: player_node.querySelector(`.lines .content`),
 							trt: player_node.querySelector(`.tetris_rate .content`),
-							running_trt: player_node.querySelector(`.running_trt`),
 							preview: player_node.querySelector(`.next_piece`),
 							field: player_node.querySelector(`.board`),
 							drought: player_node.querySelector(`.drought .value`),
@@ -414,10 +430,10 @@
 							runway_t_diff: player_node.querySelector(
 								`.runway .tetris_diff .value`
 							),
+
+							score_box: player_node.querySelector(`.score`),
 						},
 						{
-							field_pixel_size: 4.5,
-							running_trt_dot_size: 5,
 							preview_pixel_size: 3,
 							format_score: v => readableScoreFomatter(v, 7),
 							stereo: translate([1, 2], [-1, 1], player_num),
@@ -428,11 +444,31 @@
 						player.dom.runway_box.remove();
 					}
 
+					if (QueryString.get('qual') === '1') {
+						player.dom.hearts.remove();
+						player.dom.runway_box.remove();
+						player_node.querySelector(`.score .tetris_diff`).remove();
+						player_node.querySelector(`.score .diff`).remove();
+						player_node.classList.add('qual');
+					}
+
+					if (!CYCLE_TDIFF) {
+						player_node.querySelector(`.score .tetris_diff`)?.remove();
+					}
+
 					player.onGameOver = () => {};
 
 					players.push(player);
 				});
 			});
+
+			if (CYCLE_TDIFF) {
+				setInterval(() => {
+					players.forEach(player => {
+						player.dom.score_box.classList.toggle('with_tdiff');
+					});
+				}, CYCLE_TDIFF * 1000);
+			}
 
 			const competition = new Competition(players);
 
@@ -494,6 +530,20 @@
 
 			// expose API into window for debugging
 			window._NTC_API = competition.API;
+
+			const match_value = QueryString.get('match');
+
+			if (/^([01]|both)$/.test(match_value)) {
+				// show the requested view
+				competition.API.setMatch(
+					match_value == 'both' ? null : parseInt(match_value, 10)
+				);
+				// and then lock the view by disabling changes
+				competition.API.setMatch = () => {};
+			} else {
+				// Layout starts in 1 match view
+				competition.API.setMatch(0);
+			}
 		</script>
 	</body>
 </html>

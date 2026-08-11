@@ -4,8 +4,22 @@
 		<link rel="stylesheet" type="text/css" href="/views/tetris.css" />
 		<link rel="stylesheet" type="text/css" href="/views/mmp.css" />
 		<style>
+			#stream_bg {
+				--bgwidth: 100vw;
+
+				container-type: inline-size;
+				container-name: stream_bg;
+				width: var(--bgwidth);
+				height: 1080px;
+			}
+
 			.player {
 				top: 341px;
+				transition: transform 0.3s ease, left 0.3s ease, right 0.3s ease,
+					top 0.3s ease;
+				--focus-top: 125px;
+				--focus-left: calc(var(--bgwidth) - 360px);
+				--focus-scale: 1.2;
 			}
 
 			.running_trt {
@@ -53,20 +67,69 @@
 				height: 28px;
 				padding: 7px 0 6px;
 			}
+
+			.player.focus .box.video {
+				border: 0;
+				border-image-slice: unset;
+				border-image-source: unset;
+				--width: var(--bgwidth);
+				--height: 1080px;
+				left: 0;
+				top: 0;
+			}
+
+			.player.focus .name {
+				transform: scale(var(--focus-scale));
+				left: var(--focus-left);
+				top: var(--focus-top);
+				width: 266px;
+				z-index: 3;
+			}
+
+			.player.focus .board {
+				transform: scale(var(--focus-scale));
+				left: calc(var(--focus-left) + 32px);
+				top: calc(var(--focus-top) + 221px);
+				z-index: 2;
+			}
+
+			.player.focus .score {
+				transform: scale(var(--focus-scale));
+				left: var(--focus-left);
+				top: calc(var(--focus-top) + 77px);
+				z-index: 3;
+			}
+
+			.player.focus .running_trt {
+				transform: scale(var(--focus-scale));
+				left: var(--focus-left);
+				top: calc(var(--focus-top) + 692px);
+				z-index: 3;
+			}
+
+			.banner {
+				display: none;
+				position: absolute;
+				bottom: 0;
+				background: rgba(128, 128, 0, 0.8);
+				height: 57px;
+				width: 1920px;
+			}
 		</style>
 	</head>
+
 	<body>
 		<div id="stream_bg">
 			<template id="player">
 				<div class="player">
+					<div class="box video"><video class="player_vid"></video></div>
+
 					<div class="box score">
 						<div class="header">SCORE</div>
 						<div class="value">0000000</div>
 					</div>
 
 					<div class="box running_trt"></div>
-
-					<div class="box video"><video class="player_vid"></video></div>
 
 					<div class="box board">
 						<div class="lines">000</div>
@@ -77,6 +140,7 @@
 				</div>
 			</template>
 			<div class="brand"></div>
+			<div class="banner"></div>
 		</div>
 		<!-- End Stream BG -->
 
@@ -84,11 +148,11 @@
 		<script>
 			// custom view parameters which will be passed in the websocket URI
 			const view_meta = new URLSearchParams({
-				video: '352x240',
+				video: '1920x1080',
 				players: 6,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import QueryString from '/js/QueryString.js';
@@ -105,10 +169,16 @@
 
 			const players = [];
 
-			let num_players = 6; // TODO: accomodate 8
+			let num_players = 6; // TODO: accommodate 8
 
-			const hspacer = (1920 - player_width * 3) / 4;
-			const vspacer = (1080 - 48 - player_height * 2) / 3; // 48 for bottom banner
+			const bg_width = Math.round(
+				parseFloat(getComputedStyle(document.getElementById('stream_bg')).width)
+			);
+
+			const hspacer = (bg_width - player_width * 3) / 4;
+			const vspacer = (1080 - 57 - player_height * 2) / 3; // 57 for bottom banner (standard ctwc)
+
+			console.log({ hspacer, vspacer });
 
 			window.onload = () => {
 				// wait for css
@@ -125,6 +195,10 @@
 						player_node.classList.add(`p${player_idx + 1}`);
 						stream_bg.appendChild(player_node);
 
+						if (QueryString.get('rtrt') === '0') {
+							player_node.querySelector(`.running_trt`).remove();
+						}
+
 						const player = new Player(
 							{
 								name: player_node.querySelector(`.name`),
@@ -134,9 +208,10 @@
 								field: player_node.querySelector(`.board`),
 								running_trt: player_node.querySelector(`.running_trt`),
 								video: player_node.querySelector(`video`),
+
+								node: player_node,
 							},
 							{
-								field_pixel_size: 2.5,
 								preview_pixel_size: 2,
 								preview_align: 'tr',
 								stereo: translate([1, 3], [-1, 1], col_num),
@@ -168,15 +243,67 @@
 							)}px`,
 						});
 
-						if (QueryString.get('rtrt') === '0') {
-							player.dom.running_trt.remove();
-						}
+						player._layout_data = {
+							left: player_node.style.left,
+							top: player_node.style.top,
+						};
 					});
 				});
 
 				const competition = new Competition(players);
 
-				updateScore();
+				competition.API.focusPlayer = player_idx => {
+					if (player_idx === null) {
+						players.forEach(player => {
+							player.dom.node.classList.remove('focus');
+							player.dom.node.style.transform = null;
+							player.dom.node.style.transformOrigin = null;
+							player.dom.node.style.zIndex = null;
+							player.dom.node.style.right = null;
+							player.dom.node.style.top = player._layout_data.top;
+							player.dom.node.style.left = player._layout_data.left;
+						});
+						return;
+					}
+
+					const players_copy = [...players];
+					const focus_player = players_copy.splice(player_idx, 1)[0];
+
+					// position focus player
+					if (focus_player) {
+						focus_player.dom.node.classList.add('focus');
+						Object.assign(focus_player.dom.node.style, {
+							left: 0,
+							top: 0,
+							transform: null,
+							transformOrigin: null,
+							zIndex: 0,
+						});
+					}
+
+					const scale = 0.41;
+					const top = 8;
+
+					const baseStyles = {
+						left: `10px`, // 118px for right 🤷
+						zIndex: 1,
+						transform: `scale(${scale})`,
+						transformOrigin: 'top left',
+					};
+
+					players_copy.forEach(player => {
+						player.dom.node.classList.remove('focus');
+					});
+
+					players_copy.forEach((player, pidx) => {
+						Object.assign(player.dom.node.style, {
+							...baseStyles,
+							top: `${top + pidx * player_height * scale}px`,
+						});
+					});
+				};
+
+				window._NTC_API = competition.API;
 			};
 		</script>
 	</body>

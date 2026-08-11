@@ -1,6 +1,6 @@
 import User from '../domains/User.js';
 import dbPool from '../modules/db.js';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 
 class UserDAO {
 	constructor() {
@@ -138,7 +138,31 @@ class UserDAO {
 
 				console.log('creating user');
 				// user is not already mapped, we must create a new user now, and link it to the identity
-				if (options.provider === 'twitch') {
+				if (options.provider === 'google') {
+					// in the case of google, we know the caller has provided a unique login already
+					// so we expect the insertion to just work
+					const res = await dbPool.query(
+						`INSERT INTO users
+						(login, secret, type, description, display_name, profile_image_url)
+						VALUES
+						($1, $2, $3, $4, $5, $6)
+						ON CONFLICT(login) DO NOTHING
+						RETURNING id
+						`,
+						[
+							user_data.login,
+							user_data.secret,
+							user_data.type,
+							user_data.description,
+							user_data.display_name,
+							user_data.profile_image_url,
+						]
+					);
+
+					user_id = res.rows?.[0]?.id;
+				} else {
+					// for twitch and discord, the login/username may already be claimed in the user table
+					// so we try to insert it, and if it fails, we create a random login instead
 					const res = await dbPool.query(
 						`INSERT INTO users
 						(login, secret, type, description, display_name, profile_image_url)
@@ -169,7 +193,7 @@ class UserDAO {
 							RETURNING id
 							`,
 							[
-								ULID.ulid().toLowerCase(), // this means the user cannot share his room via his twitch login 🥲. User should go update his login later to something more easily usable
+								ulid().toLowerCase(), // this means the user cannot share his room via his twitch login 🥲. User should go update his login later to something more easily usable
 								user_data.secret,
 								user_data.type,
 								user_data.description,
@@ -179,33 +203,13 @@ class UserDAO {
 						);
 
 						user_id = res.rows?.[0]?.id;
-
-						if (!user_id) {
-							throw new Error(
-								`Error: Unable to create twitch user ${user_data.login}`
-							);
-						}
 					}
-				} else if (options.provider === 'google') {
-					const res = await dbPool.query(
-						`INSERT INTO users
-						(login, secret, type, description, display_name, profile_image_url)
-						VALUES
-						($1, $2, $3, $4, $5, $6)
-						ON CONFLICT(login) DO NOTHING
-						RETURNING id
-						`,
-						[
-							user_data.login,
-							user_data.secret,
-							user_data.type,
-							user_data.description,
-							user_data.display_name,
-							user_data.profile_image_url,
-						]
-					);
+				}
 
-					user_id = res.rows?.[0]?.id;
+				if (!user_id) {
+					throw new Error(
+						`Error: Unable to create ${options.provider} user ${user_data.login}`
+					);
 				}
 
 				console.log('updating user_identities', [
@@ -269,7 +273,7 @@ class UserDAO {
 			user.secret = new_secret;
 			this.users_by_secret.set(user.secret, user);
 		} catch (err) {
-			console.log(`Unable to update secret for user ${user.login}`);
+			console.log(`Unable to update secret for user ${user.login}: `, err);
 		}
 
 		return user;
@@ -337,6 +341,8 @@ class UserDAO {
 
 				if (!user) {
 					user = this.addUserFromData(result.rows[0]);
+				} else {
+					user.updateUserFields(result.rows[0]);
 				}
 			}
 		}

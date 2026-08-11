@@ -1,5 +1,5 @@
 import express from 'express';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 import nocache from 'nocache';
 import _ from 'lodash';
 
@@ -38,7 +38,7 @@ router.get('/revoke_secret', async (req, res) => {
 		return;
 	}
 
-	await UserDAO.updateSecret(user, ULID.ulid());
+	await UserDAO.updateSecret(user, ulid());
 
 	req.session.user.secret = user.secret;
 

@@ -52,7 +52,7 @@
 			}
 
 			.score .aligner .diff {
-				animation: 0.5s ease-out fadeIn;
+				animation: var(--tdiff-anim) fadeIn;
 				opacity: 1;
 			}
 
@@ -120,7 +120,7 @@
 
 			.name,
 			.flag {
-				top: 910px;
+				top: 909px;
 			}
 
 			.name {
@@ -133,7 +133,8 @@
 
 			.name .header {
 				color: #fff;
-				font-size: 28.01px; /* sad -_- */
+				font-size: 28.01px;
+				/* sad -_- */
 				padding-top: 29px;
 				padding-bottom: 9px;
 			}
@@ -166,12 +167,14 @@
 			.flag,
 			.burn,
 			.efficiency,
+			.new_efficiency,
+			.piece_counts,
 			.runways {
 				--offset: 337px;
 			}
 
 			.hearts {
-				bottom: -919px;
+				bottom: -918px;
 				width: 24px;
 				padding-right: 0;
 				height: unset;
@@ -341,6 +344,77 @@
 				color: #880005;
 			}
 
+			.new_efficiency {
+				--offset: 504px;
+				height: unset;
+				width: 400px;
+				color: #888;
+				top: 449px;
+				padding-top: 5px;
+				line-height: 28px;
+			}
+
+			.new_efficiency .content {
+				display: flex;
+				justify-content: space-between;
+			}
+
+			.new_efficiency .label {
+				text-align: left;
+			}
+
+			.new_efficiency .value,
+			.new_efficiency .percent {
+				text-align: right;
+				color: white;
+			}
+
+			.tetris_streaks {
+				--offset: 504px;
+				height: unset;
+				width: 256px;
+				color: #888;
+				top: 595px;
+				padding-top: 5px;
+				line-height: 28px;
+			}
+
+			.tetris_streaks .content {
+				display: flex;
+				justify-content: space-between;
+			}
+
+			.tetris_streaks .label {
+				text-align: left;
+			}
+
+			.tetris_streaks .value {
+				text-align: right;
+				color: white;
+			}
+
+			.piece_counts {
+				height: 236px;
+				width: 140px;
+				color: #888;
+				top: 449px;
+				padding-top: 5px;
+				line-height: 28px;
+			}
+
+			.piece_counts .content {
+				display: flex;
+				justify-content: space-between;
+			}
+
+			.piece_counts .label {
+				text-align: left;
+			}
+
+			.piece_counts .value {
+				color: white;
+			}
+
 			.simul-tetris {
 				display: none;
 				position: absolute;
@@ -357,6 +431,7 @@
 			.p2 .lines {
 				left: 0;
 			}
+
 			.p2 .next_piece {
 				left: 169px;
 			}
@@ -384,10 +459,18 @@
 			}
 
 			.match.small {
-				transform: scale(0.7680180180180181); /* (1080-57)/666/2 */
+				transform: scale(0.7680180180180181);
+				/* (1080-57)/666/2 */
 			}
+
 			#match2.small {
 				top: 511px;
+			}
+
+			.match.small .new_efficiency,
+			.match.small .tetris_streak,
+			.match.small .piece_counts {
+				display: none;
 			}
 
 			.match.small .score,
@@ -418,12 +501,15 @@
 			.match.small .burn.max {
 				--offset: 984px;
 			}
+
 			.match.small .burn {
 				--offset: 828px;
 			}
+
 			.match.small .tetris_value {
 				--offset: 627px;
 			}
+
 			.match.small .level {
 				width: 88px;
 				--offset: 515px;
@@ -450,12 +536,15 @@
 			.match.small .drought.current {
 				--offset: 515px;
 			}
+
 			.match.small .drought.last {
 				--offset: 657px;
 			}
+
 			.match.small .drought.max {
 				--offset: 814px;
 			}
+
 			.match.small .drought.count {
 				--offset: 956px;
 			}
@@ -478,27 +567,33 @@
 				top: 0;
 				z-index: 8;
 			}
+
 			.match.small .score {
 				z-index: 7;
 			}
+
 			.match.small .hearts {
 				bottom: unset;
 				top: 553px;
 				width: unset;
 				display: flex;
 			}
+
 			.match.small .hearts span {
 				padding: 0 2px;
 				display: inline-block;
 			}
+
 			.match.small .flag,
 			.match.small .name {
 				z-index: 6;
 				top: 0;
 			}
+
 			.match.small .name {
 				width: 737px;
 			}
+
 			.match.small .flag {
 				--offset: 1095px;
 			}
@@ -521,6 +616,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<template id="player">
 			<div class="player">
@@ -547,7 +643,7 @@
 						<div class="diff winning">0&#x202F;000&#x202F;000</div>
 					</div>
 					<div class="tetris_diff">
-						<span class="value">0.00</span>&#x202F;TETRISES
+						<span class="value">0.00</span>&#x202F;TETRIS
 					</div>
 				</div>
 
@@ -622,6 +718,65 @@
 					</div>
 				</div>
 
+				<div class="box piece_counts">
+					<div class="header">PIECES</div>
+					<div class="content">
+						<div class="label">
+							<div class="T">T</div>
+							<div class="J">J</div>
+							<div class="Z">Z</div>
+							<div class="O">O</div>
+							<div class="S">S</div>
+							<div class="L">L</div>
+							<div class="I">I</div>
+						</div>
+						<div class="value">
+							<div class="T">000</div>
+							<div class="J">000</div>
+							<div class="Z">000</div>
+							<div class="O">000</div>
+							<div class="S">000</div>
+							<div class="L">000</div>
+							<div class="I">000</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="box new_efficiency">
+					<div class="header">EFFICIENCY</div>
+					<div class="content">
+						<div class="label">
+							<div class="eff_all">ALL</div>
+							<div class="eff_50">LAST 50</div>
+							<div class="eff_20">LAST 20</div>
+						</div>
+						<div class="value">
+							<div class="eff_all">-</div>
+							<div class="eff_50">-</div>
+							<div class="eff_20">-</div>
+						</div>
+						<div class="percent">
+							<div class="eff_all">-</div>
+							<div class="eff_50">-</div>
+							<div class="eff_20">-</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="box tetris_streaks">
+					<div class="header">TR STREAKS</div>
+					<div class="content">
+						<div class="label">
+							<div class="cur">CUR</div>
+							<div class="max">MAX</div>
+						</div>
+						<div class="value">
+							<div class="cur">0</div>
+							<div class="max">0</div>
+						</div>
+					</div>
+				</div>
+
 				<div class="box flag"></div>
 
 				<img class="simul-tetris" src="/images/simul-tetris.png" />
@@ -654,10 +809,14 @@
 				players: 4,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
-			import { peerServerOptions, TRANSITIONS } from '/views/constants.js';
+			import {
+				peerServerOptions,
+				TRANSITIONS,
+				EFF_LINE_VALUES,
+			} from '/views/constants.js';
 			import {
 				peek,
 				noop,
@@ -770,6 +929,13 @@
 				}
 			}
 
+			function getEffPercent(eff) {
+				const ratio =
+					(eff - EFF_LINE_VALUES[1]) /
+					(EFF_LINE_VALUES[4] - EFF_LINE_VALUES[1]);
+				return Math.floor(ratio * 100) + '%';
+			}
+
 			[1, 2].forEach(match_num => {
 				const match_node = document.getElementById(`match${match_num}`);
 				const match_players = [];
@@ -836,7 +1002,6 @@
 						{
 							biglogo: true,
 							bigntc: true,
-							field_pixel_size: 4,
 							running_trt_dot_size: 4,
 							preview_pixel_size: 3.75,
 							format_score: v => readableScoreFomatter(v),
@@ -923,19 +1088,89 @@
 						} else {
 							player.dom.drought_max.closest('.box').classList.remove('active');
 						}
+
+						player_node.querySelector(
+							`.piece_counts .value .${piece_evt.piece}`
+						).textContent = `${
+							piece_evt.pieces[piece_evt.piece].count
+						}`.padStart(3, '0');
 					};
 
 					let max_burn = 0;
+					let max_streak = 0;
+					let cur_streak = 0;
+					const line_values_50 = [];
 
 					player.onLines = frame => {
+						if (!frame?.clears) return;
+
+						const clear_evt = peek(frame.clears);
+						const cleared = clear_evt?.cleared || 0;
+
+						if (cleared === 0) return;
+
 						if (player.game?.data.running_stats.burn >= max_burn) {
 							player.dom.burn_max.textContent = max_burn =
 								player.game.data.running_stats.burn;
 						}
+
+						const eff_node = player_node.querySelector(
+							`.new_efficiency .content`
+						);
+
+						line_values_50.push(
+							...Array(cleared).fill(EFF_LINE_VALUES[cleared])
+						);
+
+						if (line_values_50.length > 50) {
+							line_values_50.splice(0, line_values_50.length - 50);
+						}
+
+						const eff_50 =
+							line_values_50.reduce((acc, v) => acc + v, 0) /
+							line_values_50.length;
+
+						const lines_values_20 = line_values_50.slice(-20);
+						const eff_20 =
+							lines_values_20.reduce((acc, v) => acc + v, 0) /
+							lines_values_20.length;
+
+						eff_node.querySelector(`.value .eff_all`).textContent = Math.floor(
+							clear_evt.efficiency
+						);
+						eff_node.querySelector(`.value .eff_50`).textContent =
+							Math.floor(eff_50);
+						eff_node.querySelector(`.value .eff_20`).textContent =
+							Math.floor(eff_20);
+
+						eff_node.querySelector(`.percent .eff_all`).textContent =
+							getEffPercent(clear_evt.efficiency);
+						eff_node.querySelector(`.percent .eff_50`).textContent =
+							getEffPercent(eff_50);
+						eff_node.querySelector(`.percent .eff_20`).textContent =
+							getEffPercent(eff_20);
+
+						if (cleared === 4) {
+							cur_streak += 1;
+							if (cur_streak > max_streak) {
+								max_streak = cur_streak;
+								player_node.querySelector(
+									`.tetris_streaks .value .max`
+								).textContent = max_streak;
+							}
+						} else {
+							cur_streak = 0;
+						}
+
+						player_node.querySelector(
+							`.tetris_streaks .value .cur`
+						).textContent = cur_streak;
 					};
 
 					player.onGameStart = () => {
 						player.is_chasing_down = false;
+
+						line_values_50.length = 0;
 
 						player.dom.burn.textContent =
 							player.dom.burn_max.textContent =
@@ -972,6 +1207,28 @@
 						]('hide19');
 
 						computeRunwayDiffs(match_players);
+
+						const eff_node = player_node.querySelector(
+							`.new_efficiency .content`
+						);
+
+						eff_node.querySelector(`.value .eff_all`).textContent =
+							eff_node.querySelector(`.value .eff_50`).textContent =
+							eff_node.querySelector(`.value .eff_20`).textContent =
+							eff_node.querySelector(`.percent .eff_all`).textContent =
+							eff_node.querySelector(`.percent .eff_50`).textContent =
+							eff_node.querySelector(`.percent .eff_20`).textContent =
+								'-';
+
+						player_node.querySelector(
+							`.tetris_streaks .value .cur`
+						).textContent =
+							player_node.querySelector(
+								`.tetris_streaks .value .max`
+							).textContent =
+							cur_streak =
+							max_streak =
+								0;
 					};
 
 					player.onGameOver = () => {
@@ -1061,6 +1318,7 @@
 				competition.API.setMatch(
 					match_value == 'both' ? null : parseInt(match_value, 10)
 				);
+				competition.API.setMatch = () => {};
 			} else {
 				// Layout starts 1 match view
 				competition.API.setMatch(0);

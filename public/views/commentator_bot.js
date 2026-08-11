@@ -2,16 +2,22 @@ import QueryString from '/js/QueryString.js';
 import { assignUserVoice, speak } from '/views/tts.js';
 
 const botName = '_ntc_commentator_bot';
-const lang = /^(en|fr)(-[A-Z]{2})?$/.test(QueryString.get('lang')) // only 2 languages supported, French and English
-	? QueryString.get('lang')
-	: 'en';
-const voiceNameRe =
-	QueryString.get('botvoice') && /^[a-z]+$/i.test(QueryString.get('botvoice'))
-		? new RegExp(`^${QueryString.get('botvoice')}`, 'i')
-		: /^(daniel|thomas)/i;
-const botInterval = /^\d+$/.test(QueryString.get('botinterval'))
-	? parseInt(QueryString.get('botinterval'), 10) * 1000
-	: 30 * 1000;
+
+const lang = (lang =>
+	/^(en|fr)(-[A-Z]{2})?$/.test(lang) // only 2 languages supported, French and English
+		? lang
+		: 'en')(QueryString.get('lang'));
+
+const voiceNameRe = (boitvoice =>
+	boitvoice && /^[a-z]+$/i.test(boitvoice)
+		? new RegExp(`^${boitvoice}`, 'i')
+		: /^(daniel|thomas)/i)(QueryString.get('botvoice'));
+
+const botInterval = (botinterval =>
+	1000 * (/^[1-9]\d*$/.test(botinterval) ? parseInt(botinterval, 10) : 30))(
+	QueryString.get('botinterval')
+);
+
 const botRate = lang.startsWith('en') ? 1.15 : 1; // speed up is not the same in all browsers :'(
 
 export class MatchCommentatorBot {
@@ -25,11 +31,11 @@ export class MatchCommentatorBot {
 
 		this.players = players;
 
-		this.intervalId = setInterval(() => this.#scoreUpdate(), botInterval);
+		this.intervalId = setInterval(this.#scoreUpdate, botInterval);
 
 		players.forEach((player, idx) => {
-			player.on('gamestart', () => this.gameStart(idx));
-			player.on('gameover', () => this.gameOver(idx));
+			player.addEventListener('gamestart', () => this.gameStart(idx));
+			player.addEventListener('gameover', () => this.gameOver(idx));
 		});
 	}
 
@@ -38,7 +44,7 @@ export class MatchCommentatorBot {
 			this.intervalId = clearInterval(this.intervalId);
 		}
 
-		this.intervalId = setInterval(() => this.#scoreUpdate(), botInterval);
+		this.intervalId = setInterval(this.#scoreUpdate, botInterval);
 	}
 
 	gameOver(playerIdx) {
@@ -98,7 +104,7 @@ export class MatchCommentatorBot {
 			);
 		} else if (player.getScore() >= otherPlayer.getScore()) {
 			// other player NOT dead AND behind in score, this is a chase down!
-			const upperThousand = Math.floor(player.getScore() / 1000) + 1; // not using ceil because we need a strict +1
+			const upperThousand = Math.floor(player.getScore() / 1000) + 1; // not using  need a strict ceil because we+1
 			speak(
 				{
 					username: botName,
@@ -154,7 +160,7 @@ export class MatchCommentatorBot {
 		return `player ${playerIdx + 1}: ${enScore}`;
 	}
 
-	#scoreUpdate() {
+	#scoreUpdate = () => {
 		speak(
 			{
 				username: botName,
@@ -166,7 +172,7 @@ export class MatchCommentatorBot {
 				callback: () => this.#reportPlayer1Score(),
 			}
 		);
-	}
+	};
 
 	#reportPlayer1Score() {
 		speak(

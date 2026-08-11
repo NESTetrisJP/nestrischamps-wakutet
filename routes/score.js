@@ -3,6 +3,10 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import middlewares from '../modules/middlewares.js';
 import UserDAO from '../daos/UserDAO.js';
 import ScoreDAO from '../daos/ScoreDAO.js';
+import ScoreService, {
+	handleUpdateScoreCompetition,
+} from '../domains/ScoreService.js';
+import config from '../modules/config.js';
 
 const router = express.Router();
 
@@ -195,8 +199,8 @@ function getPages(page_idx, num_pages) {
 function getCompetitionFilter(req, res, next) {
 	const filter = {};
 
-	if (/^[01]$/.test(req.query.competition)) {
-		filter.competition = req.query.competition === '1';
+	if (/^[01]|true|false$/.test(req.query.competition)) {
+		filter.competition = /^1|true$/.test(req.query.competition);
 		filter.current = filter.competition
 			? 'Competition scores'
 			: 'Non-Competition scores';
@@ -228,48 +232,14 @@ router.get(
 	async (req, res) => {
 		console.log(`Fetching user scores for ${req.session.user.id}`);
 
-		const PAGE_SIZE = 100;
-		const ALLOWED_ORDER_FIELDS = [
-			'datetime',
-			'score',
-			'tetris_rate',
-			'num_droughts',
-			'max_drought',
-		];
-		const ALLOWED_ORDER_DIRS = ['desc', 'asc'];
-
-		const options = {
-			sort_field: 'datetime',
-			sort_order: 'desc',
-			page_idx: 0,
-			competition: null,
-		};
-
-		// validate and get args from query
-		if (ALLOWED_ORDER_FIELDS.includes(req.query.sort_field)) {
-			options.sort_field = req.query.sort_field;
-		}
-
-		if (ALLOWED_ORDER_DIRS.includes(req.query.sort_order)) {
-			options.sort_order = req.query.sort_order;
-		}
-
-		if (/^\d+$/.test(req.query.page_idx)) {
-			options.page_idx = parseInt(req.query.page_idx, 10);
-		}
-
-		options.competition = req.ntc.filter.competition;
-
-		const num_scores = await ScoreDAO.getNumberOfScores(
+		const { scores, num_pages, options } = await ScoreService.fetchPage(
 			req.session.user,
-			options
+			{
+				...req.query,
+				competition: req.ntc.filter.competition,
+			},
+			req
 		);
-		const num_pages = Math.ceil(num_scores / PAGE_SIZE) || 1;
-
-		options.page_idx = Math.max(0, Math.min(options.page_idx, num_pages - 1));
-
-		// WARNING: when we supply pagination parameters here, all field MUST be sanitized because inerpolates them in plain JS
-		const scores = await ScoreDAO.getScorePage(req.session.user, options);
 
 		res.render('scores', {
 			scores,
@@ -293,7 +263,9 @@ router.get(
 
 		if (score) {
 			if (score.frame_file) {
-				score.frame_file_url = `${process.env.GAME_FRAMES_BASEURL}${score.frame_file}`;
+				score.frame_file_url = `${config.get('game.frames_baseurl')}${
+					score.frame_file
+				}`;
 
 				delete score.frame_file;
 			}
@@ -318,14 +290,14 @@ router.delete(
 
 		if (score && score.frame_file) {
 			const s3_client = new S3Client({
-				region: process.env.GAME_FRAMES_REGION,
+				region: config.get('game.frames_region'),
 			});
 
 			// fire and forget, and log
 			s3_client
 				.send(
 					new DeleteObjectCommand({
-						Bucket: process.env.GAME_FRAMES_BUCKET,
+						Bucket: config.get('game.frames_bucket'),
 						Key: score.frame_file,
 					})
 				)
@@ -349,26 +321,7 @@ router.put(
 	'/scores/:id/competition/:mode',
 	middlewares.assertSession,
 	middlewares.checkToken,
-	async (req, res) => {
-		console.log(`Updating score ${req.params.id}`);
-
-		if (!['0', '1'].includes(req.params.mode)) {
-			res.status(400).send('Invalid value for competition mode');
-			return;
-		}
-
-		try {
-			await ScoreDAO.updateScore(
-				req.session.user,
-				req.params.id,
-				req.params.mode === '1'
-			);
-			res.json({ status: 'ok' });
-		} catch (err) {
-			console.error(err);
-			res.status(500).send('Unable to update score');
-		}
-	}
+	handleUpdateScoreCompetition
 );
 
 router.get(

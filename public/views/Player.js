@@ -2,9 +2,22 @@ import QueryString from '/js/QueryString.js';
 import renderBlock from '/views/renderBlock.js';
 import FrameBuffer from '/views/FrameBuffer.js';
 import BaseGame from '/views/BaseGame.js';
-import { css_size, clamp, getPercent, peek } from '/views/utils.js';
+import {
+	css_size,
+	clamp,
+	getPercent,
+	peek,
+	readableScoreFomatter,
+} from '/views/utils.js';
 import Gradient from '/views/gradient.js';
 import { PIECE_COLORS, DOM_DEV_NULL, LINES } from '/views/constants.js';
+import addStackRabbitRecommendation from '/views/addStackRabbitRecommendation.js';
+import {
+	easeInQuad,
+	easeInQuint,
+	easeOutQuart,
+	easeOutQuad,
+} from '/js/anim.js';
 
 const WINNER_FACE_BLOCKS = [
 	[12, 3],
@@ -132,54 +145,23 @@ const fake_piece_evt = {
 const whiteToBlackGradient = new Gradient('#FFFFFF', '#000000');
 const whiteToTransparentGradient = new Gradient('#FFFFFF', [255, 255, 255, 0]);
 
-/*
-dom: {
-	score:   text element
-	level:   text element
-	lines:   text element
-	trt:     text element
-	preview: div for canva
-	field:   div for canva
-}
-
-options: {
-	preview_pixel_size: int,
-	field_pixel_size: int,
-	running_trt_rtl: bool,
-	wins_rtl: bool,
-}
-*/
-
-// Easing functions from Robert Penner
-function linear(t, b, c, d) {
-	return b + (c * t) / d;
-}
-
-function easeOutQuart(t, b, c, d) {
-	return -c * ((t = t / d - 1) * t * t * t - 1) + b;
-}
-
-function easeOutQuad(t, b, c, d) {
-	return -c * (t /= d) * (t - 2) + b;
-}
-
-function easeInQuad(t, b, c, d) {
-	return c * (t /= d) * t + b;
-}
-function easeInQuint(t, b, c, d) {
-	return c * (t /= d) * t * t * t * t + b;
-}
-
-// One time check of Query String args
-// Bit dirty to have Player.js access query String
-// But that's the most covenient way to share the functionality
-let buffer_time = QueryString.get('buffer_time') || '';
-
-if (/^\d+$/.test(buffer_time)) {
-	buffer_time = parseInt(buffer_time, 10);
-} else {
-	buffer_time = 0;
-}
+const STACKRABBIT_INPUT_TIMELINES = {
+	2: 'X.............................',
+	6: 'X.........',
+	7: 'X.......',
+	8: 'X......',
+	10: 'X.....',
+	11: 'X.....X....X....',
+	12: 'X....',
+	13: 'X....X...',
+	13_5: 'X....X...X...',
+	14: 'X....X...X...X...',
+	15: 'X...',
+	18: 'X..X..X...',
+	20: 'X..',
+	24: 'X.X..',
+	30: 'X.',
+};
 
 const DEFAULT_DOM_REFS = {
 	name: DOM_DEV_NULL,
@@ -190,6 +172,7 @@ const DEFAULT_DOM_REFS = {
 	runway_lv29: DOM_DEV_NULL,
 	runway_lv39: DOM_DEV_NULL,
 	projection: DOM_DEV_NULL,
+	accuracy: DOM_DEV_NULL,
 	level: DOM_DEV_NULL,
 	lines: DOM_DEV_NULL,
 	trt: DOM_DEV_NULL,
@@ -205,25 +188,37 @@ const DEFAULT_DOM_REFS = {
 };
 
 const DEFAULT_OPTIONS = {
-	field_pixel_size: 3,
-	preview_pixel_size: 3,
 	running_trt_dot_size: 4,
 	preview_align: 'c',
 	running_trt_rtl: 0,
-	wins_rtl: 0,
 	tetris_flash: parseInt(
 		/^[01234]$/.test(QueryString.get('tetris_flash'))
 			? QueryString.get('tetris_flash')
 			: '2',
 		10
 	),
-	tetris_sound: QueryString.get('tetris_sound') !== '0',
+	sound: QueryString.get('sound') !== '0',
 	stereo: 0, // [-1, 1] representing left:-1 to right:1
 	reliable_field: 1,
 	draw_field: 1,
 	avatar: QueryString.get('avatar') !== '0',
+	srabbit: QueryString.get('srabbit') === '1',
+	srabbit_input_speed: (() => {
+		const value = QueryString.get('srabbit_input_speed');
+		return /^\d+(_5)?$/.test(value) && value in STACKRABBIT_INPUT_TIMELINES
+			? value
+			: '12';
+	})(),
+	srabbit_playout_length: (() => {
+		const value = QueryString.get('srabbit_playout_length');
+		return /^[123]$/.test(value) ? parseInt(value, 10) : 2;
+	})(),
+	srabbit_rate: QueryString.get('srabbit_rate') === '1',
 	curtain: 1,
-	buffer_time,
+	buffer_time: (() => {
+		const value = QueryString.get('buffer_time');
+		return /^\d+$/.test(value) ? parseInt(value, 10) : 0;
+	})(),
 	format_score: (v, size) => {
 		if (!size) {
 			size = 7;
@@ -240,7 +235,33 @@ const DEFAULT_OPTIONS = {
 		return v.padStart(size, ' ');
 	},
 	format_drought: v => v,
+	flags: (() => {
+		const value = QueryString.get('flags');
+		return /^(c?fi|fpw?)$/.test(value) ? value : 'cfi'; // cfi: country-flag-icons - fi: flag-icons
+	})(),
+	show_score_increments: QueryString.get('show_score_increments') === '1',
+	seekableFrames: false,
 };
+
+const flagUrisFn = {
+	fi: code => `/vendor/flag-icons/flags/4x3/${code?.toLowerCase()}.svg`,
+	cfi: code => `/vendor/country-flag-icons/3x2/${code?.toUpperCase()}.svg`,
+	fp: code => `/vendor/flagpedia/svg/${code?.toLowerCase()}.svg`, // flagpedia - aspect ratio changes
+	fpw: code => `/vendor/flagpedia/192x144-webp/${code?.toLowerCase()}.webp`, // flagpedia - wavy flags, all fit within 4:3
+};
+
+const SOUNDS = {
+	tetris: {
+		source: '/views/tetris.mp3',
+		gain: 1,
+	},
+	clear: {
+		source: '/views/clear.mp3',
+		gain: 1,
+	},
+};
+
+const AUDIO_CONTEXT = new AudioContext();
 
 export default class Player extends EventTarget {
 	constructor(dom, options) {
@@ -259,14 +280,36 @@ export default class Player extends EventTarget {
 
 		this.hide_profile_card_on_next_game = false;
 
-		this.field_pixel_size =
-			this.options.field_pixel_size || this.options.pixel_size;
-		this.preview_pixel_size =
-			this.options.preview_pixel_size || this.options.pixel_size;
-		this.render_running_trt_rtl = !!this.options.running_trt_rtl;
-		this.render_wins_rtl = !!this.options.wins_rtl;
-
 		const styles = getComputedStyle(this.dom.field);
+		const field_width = css_size(styles.width);
+		this._is_small_field = field_width < 79 * 4; // pixel size of 4
+
+		this.scoreStyles = window.getComputedStyle(this.dom.score);
+
+		this.field_pixel_size = Math.max(1, Math.ceil(field_width / 79));
+
+		this.preview_pixel_size = 3; // default
+
+		if (this.options.preview_pixel_size) {
+			this.preview_pixel_size = this.options.preview_pixel_size;
+		} else if (this.dom.preview && this.dom.preview !== DOM_DEV_NULL) {
+			const preview_styles = getComputedStyle(this.dom.preview);
+
+			do {
+				const preview_width = css_size(preview_styles.width);
+				if (preview_width <= 0) break;
+
+				const preview_height = css_size(preview_styles.height);
+				if (preview_height <= 0) break;
+
+				this.preview_pixel_size = Math.max(
+					1,
+					Math.floor(Math.min(preview_width / 31, preview_height / 15))
+				);
+			} while (false); // eslint-disable-line no-constant-condition
+		}
+
+		this.render_running_trt_rtl = !!this.options.running_trt_rtl;
 
 		// getComputedStyle returns padding in Chrome,
 		// but Firefox returns 4 individual properties paddingTop, paddingLeft, etc...
@@ -281,7 +324,7 @@ export default class Player extends EventTarget {
 			field_canva_offset_l;
 
 		if (field_padding_lr || field_padding_tb) {
-			bg_width = css_size(styles.width) + 2 * field_padding_lr;
+			bg_width = field_width + 2 * field_padding_lr;
 			bg_height = css_size(styles.height) + 2 * field_padding_tb;
 			bg_offset = 0;
 			field_canva_offset_t = field_padding_tb;
@@ -289,11 +332,12 @@ export default class Player extends EventTarget {
 		} else {
 			// when padding is zero, we assume the padding is embedded in the border itself and equal on all sides
 			// and the padding has the size of this.field_pixel_size
-			bg_width = css_size(styles.width) + this.field_pixel_size * 2;
-			bg_height = css_size(styles.height) + this.field_pixel_size * 2;
-			bg_offset = this.field_pixel_size * -1;
-			field_canva_offset_t = this.field_pixel_size;
-			field_canva_offset_l = this.field_pixel_size;
+			const effective_pixel_size = css_size(styles.width) / 79;
+			bg_width = field_width + effective_pixel_size * 2;
+			bg_height = css_size(styles.height) + effective_pixel_size * 2;
+			bg_offset = effective_pixel_size * -1;
+			field_canva_offset_t = effective_pixel_size;
+			field_canva_offset_l = effective_pixel_size;
 		}
 
 		this.bg_height = bg_height; // store value for curtain animation
@@ -324,11 +368,12 @@ export default class Player extends EventTarget {
 
 		// Avatar Block
 		if (this.options.avatar) {
+			const effective_pixel_size = css_size(styles.width) / 79;
 			this.avatar = document.createElement('div');
 			this.avatar.classList.add('avatar');
 			Object.assign(this.avatar.style, {
 				position: 'absolute',
-				top: `${field_padding_tb + this.field_pixel_size * 8}px`,
+				top: `${field_padding_tb + Math.floor(effective_pixel_size * 8)}px`,
 				left: `${bg_offset}px`,
 				width: `${bg_width}px`,
 				height: `${bg_width}px`,
@@ -347,12 +392,22 @@ export default class Player extends EventTarget {
 			const styles = getComputedStyle(this.dom[name]);
 			const canvas = document.createElement('canvas');
 
-			canvas.style.position = 'absolute';
-			canvas.style.top = styles.paddingTop;
-			canvas.style.left = styles.paddingLeft;
+			if (name !== 'preview') {
+				canvas.style.position = 'absolute';
+				canvas.style.top = styles.paddingTop;
+				canvas.style.left = styles.paddingLeft;
+			}
 
-			canvas.setAttribute('width', css_size(styles.width));
-			canvas.setAttribute('height', css_size(styles.height));
+			if (name === 'field') {
+				canvas.setAttribute('width', 79 * this.field_pixel_size);
+				canvas.setAttribute('height', 159 * this.field_pixel_size);
+				canvas.style.width = styles.width;
+				canvas.style.height = styles.height;
+				canvas.style.imageRendering = 'auto'; // ensure bicubic stretch natively
+			} else {
+				canvas.setAttribute('width', css_size(styles.width));
+				canvas.setAttribute('height', css_size(styles.height));
+			}
 
 			this.dom[name].appendChild(canvas);
 
@@ -437,35 +492,31 @@ export default class Player extends EventTarget {
 		}
 
 		// buils audio objects
-		this.audioContext = new AudioContext();
-		this.sounds = {
-			tetris: {
-				audio: new Audio('/views/Tetris_Clear.mp3'),
-				gain: 0.35,
-			},
-		};
-		this.options.stereo = clamp(this.options.stereo, -1, 1);
+		this.setupSounds();
+		this.panSounds(this.options.stereo);
 
-		Object.entries(this.sounds).forEach(([sound, { audio, gain }]) => {
-			const track = this.audioContext.createMediaElementSource(audio);
-			const gainNode = new GainNode(this.audioContext, { gain });
-			const stereoNode = new StereoPannerNode(this.audioContext, {
-				pan: this.options.stereo,
-			});
+		if (this.options.srabbit) {
+			this.options.srabbit_input_timeline =
+				STACKRABBIT_INPUT_TIMELINES[this.options.srabbit_input_speed];
 
-			track
-				.connect(gainNode)
-				.connect(stereoNode)
-				.connect(this.audioContext.destination);
+			this.stackRabbitWorker = new Worker(
+				'/views/stackrabbit/wasmRabbit-worker.js'
+			);
 
-			this.sounds[sound] = () => {
-				if (this.audioContext.state === 'suspended') {
-					this.audioContext.resume();
-				}
-
-				audio.play();
+			this.stackRabbitWorker.rpc = (...command) => {
+				return new Promise((resolve, reject) => {
+					const channel = new MessageChannel();
+					channel.port1.onmessage = ({ data }) => {
+						if (data.error) {
+							reject(data.error);
+						} else {
+							resolve(data.result);
+						}
+					};
+					this.stackRabbitWorker.postMessage(command, [channel.port2]);
+				});
 			};
-		});
+		}
 
 		this.renderWinnerFrame = this.renderWinnerFrame.bind(this);
 		this._setFrameOuter = this._setFrameOuter.bind(this);
@@ -495,7 +546,45 @@ export default class Player extends EventTarget {
 	onGameStart() {}
 	onGameOver() {}
 	onCurtainDown() {}
-	onTetris() {}
+	onTetris(_full_rows) {}
+	onMoveRating() {}
+
+	setupSounds() {
+		this.sounds = {};
+		this.options.stereo = clamp(this.options.stereo, -1, 1);
+
+		Object.entries(SOUNDS).forEach(([sound, { source, gain }]) => {
+			const audio = new Audio(source);
+			const track = AUDIO_CONTEXT.createMediaElementSource(audio);
+			const gainNode = new GainNode(AUDIO_CONTEXT, { gain });
+			const stereoNode = new StereoPannerNode(AUDIO_CONTEXT, {
+				pan: this.options.stereo,
+			});
+
+			track
+				.connect(gainNode)
+				.connect(stereoNode)
+				.connect(AUDIO_CONTEXT.destination);
+
+			this.sounds[sound] = () => {
+				if (AUDIO_CONTEXT.state === 'suspended') {
+					AUDIO_CONTEXT.resume();
+				}
+
+				audio.play();
+			};
+
+			this.sounds[sound].pan = stereoNode.pan;
+		});
+	}
+
+	panSounds(stereoValue) {
+		this.options.stereo = stereoValue = clamp(stereoValue, -1, 1);
+
+		Object.values(this.sounds).forEach(soundFunction =>
+			soundFunction.pan.setValueAtTime(stereoValue, 0)
+		);
+	}
 
 	setHideProfileCardOnNextGame(do_hide) {
 		this.hide_profile_card_on_next_game = !!do_hide;
@@ -504,6 +593,48 @@ export default class Player extends EventTarget {
 	showProfileCard(visible) {
 		this.profile_card.hidden = !visible;
 		// if (visible) this._refreshProfileCard(); // will this cause a flicker? -> yes :(
+	}
+
+	showScoreIncrement(diff) {
+		const inc_el = document.createElement('div');
+
+		Object.assign(inc_el.style, {
+			position: 'absolute',
+			top: '10%',
+			left: '50%',
+			transform: 'translate(-50%, -50%)',
+			zIndex: 1000,
+			color: '#fff',
+			fontSize: this.scoreStyles.fontSize,
+			fontFamily: this.scoreStyles.fontFamily,
+			textShadow:
+				'-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0px 4px 5px rgba(0,0,0,0.5)',
+		});
+
+		inc_el.classList.add('score_increment');
+		inc_el.textContent = `+${readableScoreFomatter(diff)}`;
+
+		this.dom.field.appendChild(inc_el);
+
+		const start = Date.now();
+		const duration = 850;
+
+		const step = () => {
+			const elapsed = Date.now() - start;
+			const posOffset = easeOutQuad(elapsed, 0, 1, duration);
+			const opacity = easeInQuad(elapsed, 1, -1, duration);
+
+			inc_el.style.transform = `translate(-50%, calc(-50% - ${posOffset}em))`;
+			inc_el.style.opacity = opacity;
+
+			if (elapsed < duration) {
+				window.requestAnimationFrame(step);
+			} else {
+				inc_el.remove();
+			}
+		};
+
+		window.requestAnimationFrame(step);
 	}
 
 	setCurtainLogo(url) {
@@ -523,24 +654,19 @@ export default class Player extends EventTarget {
 			custom_logo.src = url;
 			Object.assign(custom_logo.style, {
 				maxWidth:
-					this.options.field_pixel_size <= 4 && !this.options.biglogo
-						? '180px'
-						: '260px',
+					this._is_small_field && !this.options.biglogo ? '180px' : '260px',
 				marginTop:
-					this.options.field_pixel_size <= 4 && !this.options.biglogo
-						? '-100px'
-						: '-200px',
+					this._is_small_field && !this.options.biglogo ? '-100px' : '-200px',
 			});
 
 			const small_nestrischamps_logo = document.createElement('img');
-			small_nestrischamps_logo.src =
-				this.options.field_pixel_size <= 4
-					? '/brand/logo.v3.white.png'
-					: '/brand/logo.v3.white.2x.png';
+			small_nestrischamps_logo.src = this._is_small_field
+				? '/brand/logo.v3.white.png'
+				: '/brand/logo.v3.white.2x.png';
 
 			Object.assign(small_nestrischamps_logo.style, {
 				position: 'absolute',
-				bottom: this.options.field_pixel_size <= 4 ? '35px' : '55px',
+				bottom: this._is_small_field ? '35px' : '55px',
 			});
 
 			this.curtain_container.appendChild(custom_logo);
@@ -548,10 +674,9 @@ export default class Player extends EventTarget {
 		} else {
 			const big_nestrischamps_logo = document.createElement('img');
 			big_nestrischamps_logo.classList.add('logo');
-			big_nestrischamps_logo.src =
-				this.options.field_pixel_size < 4
-					? '/brand/logo.v3.white.2x.png'
-					: '/brand/logo.v3.white.3x.png';
+			big_nestrischamps_logo.src = this._is_small_field
+				? '/brand/logo.v3.white.2x.png'
+				: '/brand/logo.v3.white.3x.png';
 
 			this.curtain_container.appendChild(big_nestrischamps_logo);
 		}
@@ -563,26 +688,29 @@ export default class Player extends EventTarget {
 		this._hideCurtain();
 		this.curtain_viewport.hidden = false;
 
-		const start_ts = Date.now();
+		const start = Date.now();
 		const duration = 1000;
 
-		const steps = () => {
-			const elapsed = Date.now() - start_ts;
-			const ratio = Math.min(elapsed / duration, 1);
-
-			const top = easeOutQuart(ratio, -this.bg_height, this.bg_height, 1);
+		const step = () => {
+			const elapsed = Date.now() - start;
+			const top = easeOutQuart(
+				elapsed,
+				-this.bg_height,
+				this.bg_height,
+				duration
+			);
 
 			this.curtain_container.style.top = `${top}px`;
 
 			if (elapsed <= duration) {
-				this.curtain_animation_ID = window.requestAnimationFrame(steps);
+				this.curtain_animation_ID = window.requestAnimationFrame(step);
 			} else {
 				this.curtain_animation_ID = null;
 				this.onCurtainDown();
 			}
 		};
 
-		steps();
+		step();
 	}
 
 	_hideCurtain() {
@@ -610,20 +738,20 @@ export default class Player extends EventTarget {
 		this.comp_messages.textContent = message;
 
 		if (message && fadeDuration) {
-			const start_ts = Date.now();
+			const start = Date.now();
 
-			const steps = () => {
-				const elapsed = Date.now() - start_ts;
+			const step = () => {
+				const elapsed = Date.now() - start;
 
 				this.comp_messages.style.color = whiteToBlackGradient
 					.getColorAt(elapsed / fadeDuration) // getColorAt() clamps ratio to [0,1]
 					.toHexString();
 
 				this.comp_message_animation_ID =
-					elapsed <= fadeDuration ? window.requestAnimationFrame(steps) : null;
+					elapsed <= fadeDuration ? window.requestAnimationFrame(step) : null;
 			};
 
-			steps();
+			step();
 		}
 	}
 
@@ -682,10 +810,11 @@ export default class Player extends EventTarget {
 		showRemainingTime();
 	}
 
-	_doTetris() {
-		const start = Date.now();
+	_doTetris(full_rows) {
 		const final_black = 'rgba(0,0,0,0)';
 		const duration = (25 / 60) * 1000;
+
+		const start = Date.now();
 
 		if (this.options.tetris_flash) {
 			this.field_bg.style.display = 'block';
@@ -693,14 +822,14 @@ export default class Player extends EventTarget {
 
 		if (this.options.tetris_flash === 1) {
 			// classic flash
-			const steps = () => {
+			const step = () => {
 				const elapsed = Date.now() - start;
 
 				const flashing = (elapsed / 1000) % (5 / 60) < 2 / 60; // flash for 2 "frames" every 5 "frames"
 				this.field_bg.style.background = flashing ? 'white' : final_black;
 
 				if (elapsed <= duration) {
-					this.tetris_animation_ID = window.requestAnimationFrame(steps);
+					this.tetris_animation_ID = window.requestAnimationFrame(step);
 				} else {
 					// make sure we don't end on white
 					this.field_bg.style.removeProperty('background');
@@ -708,31 +837,30 @@ export default class Player extends EventTarget {
 				}
 			};
 
-			steps();
+			step();
 		} else if (this.options.tetris_flash === 2) {
 			// Extended flash then fade
-			const steps = () => {
+			const step = () => {
 				const elapsed = Date.now() - start;
-				const ratio = Math.min(elapsed / duration, 1);
 
 				this.field_bg.style.background = whiteToTransparentGradient
-					.getColorAt(easeInQuad(ratio, 0, 1, 1))
+					.getColorAt(easeInQuad(elapsed, 0, 1, duration))
 					.toRGBAString();
 
 				if (elapsed <= duration) {
-					this.tetris_animation_ID = window.requestAnimationFrame(steps);
+					this.tetris_animation_ID = window.requestAnimationFrame(step);
 				} else {
 					this.field_bg.style.removeProperty('background');
 					this.field_bg.style.display = 'none';
 				}
 			};
 
-			steps();
+			step();
 		} else if (this.options.tetris_flash === 3) {
 			this.field_bg_inner.style.background = 'white';
 
 			// Fade in-out swipe
-			const steps = () => {
+			const step = () => {
 				const elapsed = Date.now() - start;
 				const ratio = Math.min(elapsed / duration, 1);
 
@@ -750,44 +878,43 @@ export default class Player extends EventTarget {
 				Object.assign(this.field_bg_inner.style, props);
 
 				if (elapsed <= duration) {
-					this.tetris_animation_ID = window.requestAnimationFrame(steps);
+					this.tetris_animation_ID = window.requestAnimationFrame(step);
 				} else {
 					this.field_bg.style.display = 'none';
 				}
 			};
 
-			steps();
+			step();
 		} else if (this.options.tetris_flash === 4) {
 			this.field_bg_inner.style.background = 'white';
 
 			// Fade in-out swipe
-			const steps = () => {
+			const step = () => {
 				const elapsed = Date.now() - start;
-				let ratio = Math.min(elapsed / duration, 1);
 
 				const props = {
-					top: `${easeOutQuad(ratio, 50, -50, 1)}%`,
-					height: `${easeOutQuad(ratio, 0, 100, 1)}%`,
-					opacity: `${easeInQuint(ratio, 1, -1, 1)}`,
+					top: `${easeOutQuad(elapsed, 50, -50, duration)}%`,
+					height: `${easeOutQuad(elapsed, 0, 100, duration)}%`,
+					opacity: `${easeInQuint(elapsed, 1, -1, duration)}`,
 				};
 
 				Object.assign(this.field_bg_inner.style, props);
 
 				if (elapsed <= duration) {
-					this.tetris_animation_ID = window.requestAnimationFrame(steps);
+					this.tetris_animation_ID = window.requestAnimationFrame(step);
 				} else {
 					this.field_bg.style.display = 'none';
 				}
 			};
 
-			steps();
+			step();
 		}
 
-		if (this.options.tetris_sound) {
+		if (this.options.sound) {
 			this.sounds.tetris();
 		}
 
-		this.onTetris();
+		this.onTetris(full_rows);
 	}
 
 	clearTetrisAnimation() {
@@ -812,6 +939,17 @@ export default class Player extends EventTarget {
 	_gameReset() {
 		this.winner_frame = 0;
 
+		this.stackrabbit_accuracy = {
+			evaluations: 0,
+			total_grade: 0,
+			grades: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 },
+			get overall() {
+				return this.evaluations === 0
+					? 0
+					: this.total_grade / (this.evaluations * 4);
+			},
+		};
+
 		this.preview_ctx.clear();
 		this.field_ctx.clear();
 		this.running_trt_ctx?.clear();
@@ -829,20 +967,21 @@ export default class Player extends EventTarget {
 		this.dom.trt.textContent = '-';
 		this.dom.eff.textContent = '-';
 		this.dom.burn.textContent = 0;
+		this.dom.accuracy.textContent = '-';
 
 		this._destroyGame();
 		this._showCurtain();
 	}
 
-	setDiff(diff, t_diff) {
+	setDiff(_diff, _t_diff) {
 		// implement in subclasses
 	}
 
-	setGameRunwayDiff(diff, t_diff) {
+	setGameRunwayDiff(_diff, _t_diff) {
 		// implement in subclasses
 	}
 
-	setProjectionDiff(diff, t_diff) {
+	setProjectionDiff(_diff, _t_diff) {
 		// implement in subclasses
 	}
 
@@ -939,9 +1078,11 @@ export default class Player extends EventTarget {
 	setCountryCode(code) {
 		if (!this.dom.flag) return;
 
-		this.dom.flag.innerHTML = code
-			? `<img id="country_flag" src="/vendor/country-flag-icons/3x2/${code}.svg">`
-			: '';
+		// handle flag providers here
+		const flagURI = flagUrisFn[this.options.flags]?.(code);
+
+		this.dom.flag.innerHTML =
+			code && flagURI ? `<img id="country_flag" src="${flagURI}">` : '';
 	}
 
 	setId(id) {
@@ -960,9 +1101,9 @@ export default class Player extends EventTarget {
 	_refreshProfileCard() {
 		if (this.login) {
 			const rand = `${Math.random()}`.slice(2);
-			this.profile_card.src = `/view/profile_card/${
+			this.profile_card.src = `/view/profile_card/${encodeURIComponent(
 				this.login
-			}?r=${Date.now()}-${rand}`; // always refresh with cachebuster
+			)}?r=${Date.now()}-${rand}`; // always refresh with cache buster
 		} else {
 			this.profile_card.src = `/view/profile_card/NONE`; // allows caching
 		}
@@ -976,7 +1117,9 @@ export default class Player extends EventTarget {
 	createGame() {
 		this._destroyGame();
 
-		this.game = new BaseGame();
+		this.game = new BaseGame({
+			seekableFrames: this.options.seekableFrames,
+		});
 
 		// Handlers with local rendering actions or custom behaviours
 		this.game.onScore = this._renderScore;
@@ -1099,7 +1242,26 @@ export default class Player extends EventTarget {
 
 	_renderValidFrame(frame) {
 		if (!this.game.over) {
-			this.renderField(frame.raw.level, frame.raw.field);
+			let field = frame.raw.field;
+
+			if (this.stackRabbitWorker) {
+				const piece_evt = peek(frame.pieces);
+				if (
+					piece_evt &&
+					piece_evt.recommendation &&
+					piece_evt.recommendation != 'pending' &&
+					!frame.in_clear_animation
+				) {
+					field = addStackRabbitRecommendation(
+						field,
+						piece_evt.piece,
+						piece_evt.recommendation,
+						true // onlyUseWhiteGhostBlocks
+					);
+				}
+			}
+
+			this.renderField(frame.raw.level, field);
 			this.renderPreview(frame.raw.level, frame.raw.preview);
 		}
 	}
@@ -1107,38 +1269,63 @@ export default class Player extends EventTarget {
 	_renderScore(frame) {
 		const point_evt = peek(frame.points);
 
+		if (this.options.show_score_increments) {
+			const prev_point_evt = peek(frame.points, 1);
+			const diff =
+				(point_evt?.score.current || 0) - (prev_point_evt?.score.current || 0);
+			if (diff > 0) {
+				this.showScoreIncrement(diff);
+			}
+		}
+
 		this.dom.score.textContent = this.options.format_score(
 			point_evt.score.current
 		);
 
-		if (point_evt.score.transition === null) {
+		if (
+			point_evt.score.transition === null &&
+			this.dom.runway_tr !== DOM_DEV_NULL
+		) {
 			this.dom.runway_tr.textContent = this.options.format_score(
 				point_evt.score.tr_runway,
 				6
 			);
 		}
 
-		this.dom.runway_game.textContent = this.options.format_score(
-			point_evt.score.runway,
-			7
-		);
+		if (this.dom.runway_game !== DOM_DEV_NULL) {
+			this.dom.runway_game.textContent = this.options.format_score(
+				point_evt.score.runway,
+				7
+			);
+		}
 
-		this.dom.runway_lv19.textContent = this.options.format_score(
-			point_evt.score.runways.LV19,
-			6
-		);
-		this.dom.runway_lv29.textContent = this.options.format_score(
-			point_evt.score.runways.LV29,
-			7
-		);
-		this.dom.runway_lv39.textContent = this.options.format_score(
-			point_evt.score.runways.LV39,
-			7
-		);
-		this.dom.projection.textContent = this.options.format_score(
-			point_evt.score.projection,
-			7
-		);
+		if (this.dom.runway_lv19 !== DOM_DEV_NULL) {
+			this.dom.runway_lv19.textContent = this.options.format_score(
+				point_evt.score.runways.LV19,
+				6
+			);
+		}
+
+		if (this.dom.runway_lv29 !== DOM_DEV_NULL) {
+			this.dom.runway_lv29.textContent = this.options.format_score(
+				point_evt.score.runways.LV29,
+				7
+			);
+		}
+
+		if (this.dom.runway_lv39 !== DOM_DEV_NULL) {
+			this.dom.runway_lv39.textContent = this.options.format_score(
+				point_evt.score.runways.LV39,
+				7
+			);
+		}
+
+		if (this.dom.projection !== DOM_DEV_NULL) {
+			this.dom.projection.textContent = this.options.format_score(
+				point_evt.score.projection,
+				7
+			);
+		}
 
 		this.onScore(frame);
 	}
@@ -1146,10 +1333,12 @@ export default class Player extends EventTarget {
 	_renderTransition(frame) {
 		const point_evt = peek(frame.points);
 
-		this.dom.runway_tr.textContent = this.options.format_score(
-			point_evt.score.transition,
-			6
-		);
+		if (this.dom.runway_tr !== DOM_DEV_NULL) {
+			this.dom.runway_tr.textContent = this.options.format_score(
+				point_evt.score.transition,
+				6
+			);
+		}
 
 		this.onTransition(frame);
 	}
@@ -1160,22 +1349,39 @@ export default class Player extends EventTarget {
 		if (!clear_evt) clear_evt = fake_clear_evt;
 
 		this.dom.lines.textContent = `${frame.raw.lines}`.padStart(3, '0');
-		this.dom.burn.textContent = clear_evt.burn;
+
+		if (this.dom.burn !== DOM_DEV_NULL) {
+			this.dom.burn.textContent = clear_evt.burn;
+		}
 
 		if (frame.clears.length) {
-			this.dom.trt.textContent = getPercent(clear_evt.tetris_rate);
-			this.dom.eff.textContent = (Math.round(clear_evt.efficiency) || 0)
-				.toString()
-				.padStart(3, '0');
+			if (this.dom.trt !== DOM_DEV_NULL) {
+				this.dom.trt.textContent = getPercent(clear_evt.tetris_rate);
+			}
+
+			if (this.dom.eff !== DOM_DEV_NULL) {
+				this.dom.eff.textContent = (Math.round(clear_evt.efficiency) || 0)
+					.toString()
+					.padStart(3, '0');
+			}
 
 			this.renderRunningTRT(frame.clears);
+		}
+
+		if (this.options.sound && clear_evt.cleared) {
+			if (clear_evt.cleared < 4) {
+				// not running this because it's too delayed (only runs AFTER the clear animation) :'(
+				// this.sounds.clear();
+			}
 		}
 
 		this.onLines(frame);
 	}
 
 	_renderLevel(frame) {
-		this.dom.level.textContent = `${frame.raw.level}`.padStart(2, '0');
+		if (this.dom.level !== DOM_DEV_NULL) {
+			this.dom.level.textContent = `${frame.raw.level}`.padStart(2, '0');
+		}
 
 		this.onLevel(frame);
 	}
@@ -1185,7 +1391,105 @@ export default class Player extends EventTarget {
 
 		let piece_evt = peek(frame.pieces);
 
-		if (!piece_evt) piece_evt = fake_piece_evt;
+		if (!piece_evt) {
+			piece_evt = fake_piece_evt;
+		} else if (this.stackRabbitWorker && !piece_evt.recommendation) {
+			piece_evt.recommendation = 'pending';
+
+			const params = {
+				level: frame.raw.level <= 18 ? 18 : 19,
+				lines: frame.raw.lines,
+				inputFrameTimeline: this.options.srabbit_input_timeline,
+				currentPiece: piece_evt.piece,
+				nextPiece: frame.raw.preview,
+				board: piece_evt.field.map(cell => (cell ? 1 : 0)).join(''),
+				playoutLength: this.options.srabbit_rate
+					? 1
+					: this.options.srabbit_playout_length,
+			};
+
+			// const start = Date.now();
+			this.stackRabbitWorker
+				.rpc('getMove', params)
+				.then(recommendation => {
+					// const elapsed = Date.now() - start;
+					piece_evt.recommendation = recommendation;
+					// console.log({
+					// 	elapsed,
+					// 	params,
+					// 	recommendation,
+					// });
+				})
+				.then(() => {
+					if (!this.options.srabbit_rate) return null;
+
+					const prior_piece_evt = peek(frame.pieces, 1);
+
+					if (!prior_piece_evt) return null;
+
+					const prior_frame = prior_piece_evt.frame;
+
+					const moveParams = {
+						level: prior_frame.raw.level <= 18 ? 18 : 19,
+						lines: prior_frame.raw.lines,
+						inputFrameTimeline: this.options.srabbit_input_timeline,
+						currentPiece: prior_piece_evt.piece,
+						nextPiece: piece_evt.piece,
+						board: prior_piece_evt.field.map(cell => (cell ? 1 : 0)).join(''),
+						secondBoard: params.board,
+						playoutLength: this.options.srabbit_rate
+							? 1
+							: this.options.srabbit_playout_length,
+					};
+
+					this.stackRabbitWorker
+						.rpc('rateMove', moveParams)
+						.then(ratings => {
+							const { playerMoveAfterAdjustment, bestMoveAfterAdjustment } =
+								ratings;
+							let grade;
+
+							if (playerMoveAfterAdjustment >= bestMoveAfterAdjustment - 1) {
+								grade = 4;
+							} else if (
+								playerMoveAfterAdjustment >=
+								bestMoveAfterAdjustment - 3
+							) {
+								grade = 3;
+							} else if (
+								playerMoveAfterAdjustment >=
+								bestMoveAfterAdjustment - 6
+							) {
+								grade = 2;
+							} else if (
+								playerMoveAfterAdjustment >=
+								bestMoveAfterAdjustment - 15
+							) {
+								grade = 1;
+							} else {
+								grade = 0;
+							}
+
+							this.stackrabbit_accuracy.evaluations++;
+							this.stackrabbit_accuracy.grades[grade]++;
+							this.stackrabbit_accuracy.total_grade += grade;
+
+							if (this.dom.accuracy !== DOM_DEV_NULL) {
+								this.dom.accuracy.textContent = getPercent(
+									this.stackrabbit_accuracy.overall
+								);
+							}
+
+							this.onMoveRating({ params: moveParams, ratings, grade });
+						})
+						.catch(err => {
+							console.error(err);
+						});
+				})
+				.catch(err => {
+					console.error(err);
+				});
+		}
 
 		this.dom.drought.textContent = this.options.format_drought(
 			piece_evt.i_droughts.cur
@@ -1194,7 +1498,7 @@ export default class Player extends EventTarget {
 		this.onPiece(frame);
 	}
 
-	_onGameStart(frame) {
+	_onGameStart(_frame) {
 		this._renderGameStart();
 		this.onGameStart();
 		this.dispatchEvent(new Event('gamestart'));
@@ -1242,7 +1546,7 @@ export default class Player extends EventTarget {
 			);
 		}
 
-		let x_idx = 0;
+		let x_idx;
 
 		switch (preview) {
 			case 'I':
@@ -1427,7 +1731,7 @@ export default class Player extends EventTarget {
 
 	cancelGameOver() {
 		this.clearField();
-		if (game) {
+		if (this.game) {
 			this.game.over = false;
 		}
 	}

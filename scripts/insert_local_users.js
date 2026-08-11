@@ -9,7 +9,7 @@
 
 import pg from 'pg';
 import { parse } from 'csv-parse/sync';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 import got from 'got';
 
 // replace this URL by the sheet that contains your data
@@ -35,7 +35,9 @@ const sheet_csv_url =
 		skip_empty_lines: true,
 	});
 
-	await pool.query('DELETE FROM scores WHERE player_id>32 AND frame_file is NULL or frame_file = \'\'');
+	await pool.query(
+		"DELETE FROM scores WHERE player_id>32 AND frame_file is NULL or frame_file = ''"
+	);
 	await pool.query('DELETE FROM twitch_users WHERE id>32');
 
 	records.shift(); // drop header row from csv
@@ -72,7 +74,7 @@ const sheet_csv_url =
 				id,
 				/^\s*$/.test(login) ? `__user${id}` : login,
 				`__user${id}@nestrischamps.io`,
-				ULID.ulid(),
+				ulid(),
 				description,
 				seed ? `${seed}. ${display_name}` : display_name,
 				pronouns,

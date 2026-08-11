@@ -96,7 +96,7 @@
 				players: 4,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { peerServerOptions } from '/views/constants.js';
@@ -164,7 +164,6 @@
 							projection_box: player_node.querySelector(`.projection`),
 						},
 						{
-							field_pixel_size: 220 / 80,
 							preview_pixel_size: 2,
 							preview_align: 'cc',
 							stereo: translate([1, 2], [-1, 1], player_num),

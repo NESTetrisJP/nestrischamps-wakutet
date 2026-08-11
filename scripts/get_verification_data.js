@@ -18,8 +18,8 @@ export async function getReplayGame(gameid) {
 	const response = await fetch(gamedata.frame_url);
 	const blob = await response.blob();
 	const buffer = new Uint8Array(await blob.arrayBuffer());
-	const version = buffer[0] >> 5 || 1;
-	const frame_size = BinaryFrame.FRAME_SIZE_BY_VERSION[version];
+	const version = BinaryFrame.getFrameVersion(buffer);
+	const frame_size = BinaryFrame.getFrameSize(buffer);
 
 	console.log({
 		header: buffer[0].toString(2).padStart(8, '0'),
@@ -105,6 +105,7 @@ function getSrtTimestamp(elapsed) {
 			const ts = p.frame.raw.ctime - start_ctime;
 			return {
 				ts,
+				gameid: p.frame.raw.gameid,
 				time: getSrtTimestamp(ts),
 				lines: p.frame.raw.lines,
 				level: p.frame.raw.level,
@@ -125,7 +126,7 @@ function getSrtTimestamp(elapsed) {
 	console.log(`Writing report into file ${file_name}.csv`);
 	const csv_data = report.points.map(data => {
 		const row = Object.values(data);
-		row[1] = `"${row[1]}"`; // SRT timestamps contain a comma, so we wrap the entry for CSV safety
+		row[2] = `"${row[2]}"`; // SRT timestamps contain a comma, so we wrap the entry for CSV safety
 		return row;
 	});
 	csv_data.unshift(Object.keys(report.points[0])); // prepend headers

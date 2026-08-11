@@ -166,7 +166,7 @@ function speakNext() {
 	chatter.callback = () => {
 		try {
 			callback();
-		} catch (err) {}
+		} catch (_err) {}
 
 		setTimeout(() => {
 			speaking = false;
@@ -174,7 +174,7 @@ function speakNext() {
 		}, SPEECH_PAUSE);
 	};
 
-	const utterance = speakNow(chatter);
+	return speakNow(chatter);
 }
 
 getVoices();

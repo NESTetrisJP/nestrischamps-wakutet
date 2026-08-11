@@ -3,7 +3,7 @@
 <head>
 		<%- include('partials/gtm_head') %>
 		<title>NestrisChamps: user settings</title>
-		<link rel="stylesheet" href="/vendor/bulma.1.0.2.min.css">
+		<link rel="stylesheet" href="/vendor/bulma.1.0.4.min.css">
 		<style>
 			.navbar-item img {
 				max-height: 2.5rem;
@@ -40,10 +40,28 @@
 		<thead>
 			<tr>
 				<th class="sorter" data-field="datetime">Date/Time</th>
-				<th>Start Level</th>
+				<th data-field="level">
+					<nav class="navbar" role="navigation">
+						<div class="navbar-item has-dropdown is-hoverable">
+							<span class="navbar-link"> 
+							<% if (pagination && pagination.level != null) { %>
+								<span>Start Level (<%= pagination.level %>)</span>
+							<% } else { %>
+								<span>Start Level</span>
+							<% } %>
+							</span>
+							<div class="navbar-dropdown">
+								<a class="navbar-item">all</a>
+								<% for (let i = 0; i < 30; i++) { %>
+									<a class="navbar-item"><%= i %></a>
+								<% } %>
+							</div>
+						</div>
+					</nav>
+				</th>
 				<th>End Level</th>
 				<th class="sorter" data-field="score">Score</th>
-				<th>Lines</th>
+				<th class="sorter" data-field="lines">Lines</th>
 				<th class="sorter" data-field="tetris_rate">Tetris Rate</th>
 				<th class="sorter" data-field="num_droughts">Num Droughts</th>
 				<th class="sorter" data-field="max_drought">Max Drought</th>
@@ -118,10 +136,16 @@
 		return `${score}`;
 	}
 
+	// handle competition filter links
 	document.querySelectorAll('a.filter').forEach(a => {
-		const m = (a.href || '').match(/#competition=(0|1)/);
-		const qs = m ? `?competition=${m[1]}` : '';
-		a.href = `${document.location.pathname}${qs}`;
+		a.addEventListener('click', evt => {
+			evt.preventDefault();
+
+			const m = (a.href || '').match(/#competition=(0|1)/);
+			pagination.competition = m ? m[1] : null;
+
+			load();
+		});
 	});
 
 	document.querySelectorAll('a.delete_score').forEach(a => {
@@ -308,7 +332,13 @@
 		const url = new URL(location);
 
 		for (const [key, value] of Object.entries(pagination)) {
-			url.searchParams.set(key, value);
+			if (value === null) {
+				url.searchParams.delete(key);
+			} else if (typeof value === 'boolean') {
+				url.searchParams.set(key, value ? 1 : 0);
+			} else {
+				url.searchParams.set(key, value);
+			}
 		}
 
 		location.href = url.toString();
@@ -318,11 +348,29 @@
 	// show up and/or down arrow on active sorter
 	try {
 		const sorter = document.querySelector(`th.sorter[data-field='${pagination.sort_field}']`);
-		sorter.textContent = `${sorter.textContent} ${pagination.sort_order === 'desc' ? '↓' : '↑'}`;
+		sorter.textContent += ` ${pagination.sort_order === 'desc' ? '↓' : '↑'}`;
 	}
 	catch(err) {
 		console.log(err);
 	}
+
+
+	const level_select = document.querySelector(`th[data-field='level']`);
+
+	level_select.addEventListener("click", evt => {
+		evt.preventDefault();
+		evt.stopPropagation();
+
+		if (!evt.target.matches('a')) return;
+
+		if (evt.target.textContent === 'all') {
+			pagination.level = null;
+		} else {
+			pagination.level = parseInt(evt.target.textContent, 10);
+		}
+
+		load();
+	})
 
 	document.querySelectorAll('th.sorter').forEach(th => {
 		const a = document.createElement('a');

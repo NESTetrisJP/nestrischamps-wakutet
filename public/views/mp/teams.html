@@ -40,6 +40,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<div id="stream_bg">
 			<div id="team1" class="team">
@@ -89,7 +90,7 @@
 				players: 8,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import QueryString from '/js/QueryString.js';
 			import '/views/bg.js';
@@ -197,6 +198,10 @@
 						player_node.classList.add(`p${player_num}`);
 						team_node.appendChild(player_node);
 
+						if (QueryString.get('rtrt') === '0') {
+							player_node.querySelector(`.running_trt`).remove();
+						}
+
 						const player = new Player(
 							{
 								name: player_node.querySelector(`.score .header`),
@@ -208,7 +213,6 @@
 								video: player_node.querySelector(`video`),
 							},
 							{
-								field_pixel_size: 2.5,
 								preview_pixel_size: 2,
 								preview_align: 'tr',
 								stereo: translate([0, 1], [-1, 1], team_idx),
@@ -233,10 +237,6 @@
 						Object.assign(player_node.style, {
 							left: `${base_offset_x + (col_num - 1) * player_width}px`,
 						});
-
-						if (QueryString.get('rtrt') === '0') {
-							player.dom.running_trt.remove();
-						}
 					});
 				});
 

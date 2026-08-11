@@ -1,4 +1,5 @@
 import dbPool from '../modules/db.js';
+import config from '../modules/config.js';
 
 const SESSION_BREAK_MS = 2 * 60 * 58 * 1000; // 2hours - 2s for the time check query
 
@@ -112,8 +113,28 @@ class ScoreDAO {
 		try {
 			return parseInt(result.rows[0].score, 10);
 		} catch (err) {
+			console.error(err);
 			return 0;
 		}
+	}
+
+	async getPBs181929(user) {
+		const result = await dbPool.query(
+			`
+				SELECT start_level, MAX(score) as score
+				FROM scores
+				WHERE player_id = $1
+				AND start_level IN (18, 19, 29)
+				GROUP BY start_level
+				ORDER BY start_level ASC
+			`,
+			[user.id]
+		);
+
+		return result.rows.reduce((acc, { start_level, score }) => {
+			acc[start_level] = score;
+			return acc;
+		}, {});
 	}
 
 	async getTop3(user, since = 0) {
@@ -137,6 +158,7 @@ class ScoreDAO {
 				};
 			});
 		} catch (err) {
+			console.warn(err);
 			return [];
 		}
 	}
@@ -227,6 +249,60 @@ class ScoreDAO {
 		return result.rows[0].id;
 	}
 
+	async recordQualResult(user, on_behalf_of_user, score_id, event_name) {
+		const result = await dbPool.query(
+			`
+			INSERT INTO qual_scores
+			(
+				event,
+				player_id,
+				score_id,
+				on_behalf_of_user_id,
+				display_name
+			)
+			VALUES
+			(
+				$1, $2, $3, $4, $5
+			)
+			`,
+			[
+				event_name,
+				user.id,
+				score_id,
+				on_behalf_of_user.id,
+				on_behalf_of_user.display_name,
+			]
+		);
+
+		return result.rowCount === 1;
+	}
+
+	async getQualResults(event_name, max_value = 999999) {
+		const result = await dbPool.query(
+			`
+			SELECT
+				qs.on_behalf_of_user_id as user_id,
+				qs.display_name as display_name,
+				SUM((s.score >= $1)::int) AS num_maxes,
+				MAX(CASE WHEN s.score < $1 THEN s.score ELSE 0 END) AS kicker,
+				COUNT(*) as num_scores
+			FROM qual_scores qs INNER JOIN scores s on qs.score_id = s.id
+			WHERE qs.event = $2
+			GROUP BY qs.on_behalf_of_user_id, qs.display_name
+			ORDER BY num_maxes DESC, kicker DESC;
+			`,
+			[max_value, event_name]
+		);
+
+		// type cast num maxes and scores to int
+		result.rows.forEach(row => {
+			row.num_maxes = parseInt(row.num_maxes, 10);
+			row.num_scores = parseInt(row.num_scores, 10);
+		});
+
+		return result.rows;
+	}
+
 	async getNumberOfScores(user, options = {}) {
 		const args = [user.id];
 		let additional_conditions = '';
@@ -234,6 +310,11 @@ class ScoreDAO {
 		if ([true, false].includes(options.competition)) {
 			args.push(options.competition);
 			additional_conditions += ` AND competition=$${args.length} `;
+		}
+
+		if ('level' in options && options.level !== null) {
+			args.push(options.level);
+			additional_conditions += ` AND start_level=$${args.length} `;
 		}
 
 		const result = await dbPool.query(
@@ -252,36 +333,63 @@ class ScoreDAO {
 		options = {
 			sort_field: 'datetime',
 			sort_order: 'desc',
-			page_size: 100,
+			page_size: config.get('server.max_page'),
 			page_idx: 0,
 
 			...options,
 		};
 
+		const ALLOWED_ORDER_FIELDS = [
+			'datetime',
+			'lines',
+			'score',
+			'tetris_rate',
+			'num_droughts',
+			'max_drought',
+		];
+		const sort_field = ALLOWED_ORDER_FIELDS.includes(options.sort_field)
+			? options.sort_field
+			: 'datetime';
+		const sort_order =
+			String(options.sort_order).toLowerCase() === 'asc' ? 'asc' : 'desc';
+
 		const args = [user.id];
 
 		let null_handling = '';
 
-		if (options.sort_field === 'tetris_rate') {
-			null_handling =
-				options.sort_order === 'desc' ? 'NULLS last' : 'NULLS first';
+		if (sort_field === 'tetris_rate') {
+			null_handling = sort_order === 'desc' ? 'NULLS LAST' : 'NULLS FIRST';
 		}
 
-		let filter_by_competition_mode = '';
+		let additional_conditions = '';
 
 		if ([true, false].includes(options.competition)) {
 			args.push(options.competition);
-			filter_by_competition_mode = ` AND competition=$${args.length} `;
+			additional_conditions += ` AND competition=$${args.length} `;
 		}
 
-		// WARNING: this query uses plain JS variable interpolation, parameters MUST be sane
+		if (
+			'level' in options &&
+			options.level !== null &&
+			options.level !== undefined
+		) {
+			args.push(options.level);
+			additional_conditions += ` AND start_level=$${args.length} `;
+		}
+
+		const page_size = Math.max(
+			1,
+			parseInt(options.page_size, 10) || config.get('server.max_page')
+		);
+		const page_idx = Math.max(0, parseInt(options.page_idx, 10) || 0);
+
 		const result = await dbPool.query(
 			`
 				SELECT id, datetime, start_level, end_level, score, lines, tetris_rate, num_droughts, max_drought, das_avg, duration, frame_file, competition
 				FROM scores
-				WHERE player_id=$1 ${filter_by_competition_mode}
-				ORDER BY ${options.sort_field} ${options.sort_order} ${null_handling}
-				LIMIT ${options.page_size} OFFSET ${options.page_size * options.page_idx}
+				WHERE player_id=$1 ${additional_conditions}
+				ORDER BY ${sort_field} ${sort_order} ${null_handling}
+				LIMIT ${page_size} OFFSET ${page_size * page_idx}
 			`,
 			args
 		);

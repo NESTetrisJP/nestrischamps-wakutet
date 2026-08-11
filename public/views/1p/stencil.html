@@ -80,7 +80,7 @@
 				video: '640x480',
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import QueryString from '/js/QueryString.js';
 			import BinaryFrame from '/js/BinaryFrame.js';
@@ -150,10 +150,9 @@
 					video: document.querySelector(`.player_vid`),
 				},
 				{
-					field_pixel_size: 3,
 					preview_pixel_size: 3,
 					tetris_flash: 0,
-					tetris_sound: QueryString.get('tetris_sound') === '1',
+					sound: QueryString.get('sound') === '1',
 					format_score,
 					format_drought: v => v.toString().padStart(3, '0'),
 				}

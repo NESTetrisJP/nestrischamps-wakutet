@@ -235,7 +235,7 @@
 						<div class="main">0&#x202F;000&#x202F;000</div>
 						<div class="diff winning">0&#x202F;000&#x202F;000</div>
 					</div>
-					<div><span class="tetris_diff">0.00</span> TETRISES</div>
+					<div><span class="tetris_diff">0.00</span> TETRIS</div>
 				</div>
 
 				<div class="box lines">
@@ -271,7 +271,7 @@
 						<div class="main">0&#x202F;000&#x202F;000</div>
 						<div class="diff">0&#x202F;000&#x202F;000</div>
 					</div>
-					<div><span class="tetris_diff">0.00</span> TETRISES</div>
+					<div><span class="tetris_diff">0.00</span> TETRIS</div>
 				</div>
 
 				<div class="box board"></div>
@@ -302,7 +302,7 @@
 				video: '1280x720', // urgh, so big for so much space wasted :(
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { peerServerOptions } from '/views/constants.js';
@@ -352,7 +352,6 @@
 						flag: player_node.querySelector(`.flag`),
 					},
 					{
-						field_pixel_size: 4.5,
 						running_trt_dot_size: 5,
 						preview_pixel_size: 3,
 						format_score: v => readableScoreFomatter(v),

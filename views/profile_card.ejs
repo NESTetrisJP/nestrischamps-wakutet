@@ -14,9 +14,9 @@ html, body {
 	font-family: Gotham;
 	background: black;
 
-
 	--fsize: 22px;
 	--beige: #fee28a;
+	--drakbeige: #c9af55;
 	line-height: 24px;
 	font-size: var(--fsize);
 	color: var(--beige);
@@ -36,28 +36,31 @@ html, body {
 
 #name {
 	border-bottom: 3px solid var(--beige);
+	padding: 0.5em 0;
 	margin-bottom: 0.5em;
-	padding-top: 6px;
 	flex-shrink: 0;
 	flex-grow: 0;
 }
 
 h1 {
+	color: white;
 	padding: 0;
 	margin: 0;
 	font-size: var(--fsize);
 	font-weight: normal;
-	color: white;
 	text-align: center;
 	line-height: 32px;
 }
 
 #name h1 {
-	line-height: 48px;
+	line-height: var(--fsize);
 }
 
-#name h1 .pronouns {
+#name .pronouns {
 	font-size: 12px;
+	line-height: 12px;
+	margin-top: 4px;
+	color: var(--drakbeige);
 }
 
 .container {
@@ -66,12 +69,52 @@ h1 {
 }
 
 section {
-	margin-top: 1.25em;
+	margin-top: 0.8em;
 }
 
 section:first-of-type,
 section#flag {
+	margin-top: 0.25em;
+}
+
+#flag {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+#flag img {
+  height: auto;
+  flex-shrink: 0;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 0.5rem;
+  row-gap: 0;
+  margin: 0;
+}
+
+dt {
+	text-align: right;
+	color: var(--drakbeige);
+	font-size: 0.75em;
+}
+
+dd {
+	text-align: left;
 	margin: 0;
+}
+
+dd .small {
+	font-size: 0.5em;
+}
+
+#play_info dl {
+  margin: 0 auto; /* ← centers the block horizontally */
+  width: fit-content;
 }
 
 p {
@@ -79,14 +122,22 @@ p {
 	margin-block-end: 0;
 }
 
+p::first-letter,
+dd.rival::first-letter {
+  text-transform: uppercase;
+}
+
 #twitch {
 	flex-grow: 0;
 	flex-shrink: 0;
-	position: relative;
+	position: absolute;
 	bottom: 0;
-	margin: 20px 0;
+	margin: 20px 0 12px;
+	background: black;
 	color: white;
 	width: 100%;
+	right: 0;
+	left: 0;
 }
 
 #twitch .envelop {
@@ -98,7 +149,7 @@ p {
 
 #twitch img.twitch {
 	position: absolute;
-	top: -5px;
+	top: -6px;
 	right: 15px;
 }
 
@@ -123,33 +174,72 @@ p {
 
 <div class="frame">
 	<section id="name">
-		<h1><%= (user.display_name || '').replace(/^\d+\.\s+/, '') %><% if (user.pronouns) { %> <span class="pronouns"><%= user.pronouns %></span><% } %></h1>
+		<h1><%= (user.full_name || user.display_name || '').replace(/^\d+\.\s+/, '') %>
+		<% if (user.pronouns) { %>
+			<span class="pronouns"><%= user.pronouns %></span>
+		<% } %>
+		</h1>
 	</section>
 
 	<div class="container">
 		<section id="flag">
-			<h1><%= [age, user.city].filter(v => v).join(' - ') %></h1>
-			<img src="/vendor/country-flag-icons/3x2/<%= user.country_code %>.svg" width="64">
+			<img
+				src="/vendor/flag-icons/flags/4x3/<%= user.country_code.toLowerCase() %>.svg"
+				width="64"
+				alt="Country flag"
+			>
+			<dl class="info">
+				<dt>Age</dt><dd><%= age %></dd>
+				<% if (user.city) { %>
+					<dt>State</dt><dd><%= user.city %></dd>
+				<% } %>
+			</dl>
 		</section>
 
 		<% if (user.description) { %>
 		<section id="bio">
 			<h1>Player bio</h1>
-			<p><%= user.description.replace(/\n+/g, ', ') %></p>
+			<% for (const item of user.description.split(/[\r\n]+/)) { %>
+				<p><%= item %></p>
+			<% } %>
 		</section>
 		<% } %>
 
-		<section id="play_style">
+		<section id="play_info">
 			<h1>Play info</h1>
-			<p class="play_style">Style: <%= (user.style || '').toUpperCase() %></p>
-			<p class="pb">PB: <%= pb %></p>
-			<p class="pb">Elo: <%= elo_rating %><% if (user.elo_rank) { %> ( <%= user.elo_rank %> )<% } %></p>
+			<dl>
+				<% if (user.controller && user.controller != 'other') { %>
+					<dt class="controller">Controller</dt><dd class="controller"><%= user.controller === 'nes' ? 'Original NES' : user.controller === 'goofy-foot' ? 'Goofy-Foot' : 'Hyperkin Cadet' %></dd>
+				<% } %>
+				<dt>Style</dt><dd><%= (user.style || '').toUpperCase() %></dd>
+				<% for (const [level, pb] of Object.entries(pbs)) { %>
+					<% if (pb) { %>
+					<dt class="pb">PB <%= level %></dt><dd class="pb"><%= pb %></dd>
+					<% } %>
+				<% } %>
+				<% if (user.elo_rating) { %>
+					<dt class="elo">Elo</dt><dd><%= elo_rating %><% if (user.elo_rank) { %> ( <%= user.elo_rank %> )<% } %></dd>
+				<% } %>
+				<% if (user.rival) { %>
+					<dt class="rival">Rival</dt>
+					<dd class="rival">
+						<%= user.rival %>
+						<% if (false && user.rival_reason) { %>
+							<span class="small"><%= user.rival_reason %></span>
+						<% } %>
+					</dd>
+				<% } %>
+			</dl>
 		</section>
 
+		<% if (user.interests) { %>
 		<section id="interests">
 			<h1>Interests</h1>
-			<p><%= user.interests.replace(/\n+/g, ', ') %></p>
+			<% for (const item of user.interests.split(/[\r\n]+/)) { %>
+				<p><%= item %></p>
+			<% } %>
 		</section>
+		<% } %>
 	</div>
 
 	<% if (!user.login.startsWith('__user')) { %>

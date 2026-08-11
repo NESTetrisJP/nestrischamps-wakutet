@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>NestrisChamps Producer</title>
+		<script type="module">
+			import { lazyBulmaSheets } from '/producer/components/NtcComponent.js';
+			lazyBulmaSheets().then(sheets => {
+				document.adoptedStyleSheets = sheets;
+				document.querySelector('body').classList.remove('loading');
+			});
+		</script>
+		<style type="text/css">
+			body.loading {
+				background: black; /* black FOUC better than white */
+			}
+		</style>
+	</head>
+	<body class="loading">
+		<div class="notice is-hidden"></div>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
+		<script type="module" src="/producer/main.js"></script>
+	</body>
+</html>

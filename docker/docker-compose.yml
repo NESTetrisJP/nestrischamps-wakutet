@@ -1,4 +1,3 @@
-version: '3.7'
 services:
   nc:
     build:
@@ -9,7 +8,8 @@ services:
       - db
     environment:
       NODE_ENV: production
-      DATABASE_URL: 'postgres://nestrischamps:nestrischamps@db:5432/nestrischamps'
+      PGSSLMODE: disable
+      DATABASE_URL: 'postgres://nestrischamps:nestrischamps@db:5432/nestrischamps?sslmode=disable'
       SESSION_SECRET: 1234567890ABCDEF
       FF_SAVE_GAME_FRAMES: 1
     #         TWITCH_CLIENT_ID:

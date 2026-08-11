@@ -32,7 +32,7 @@ const POINT_TYPES = [...CLEAR_TYPES, 'drops'];
 function get(obj, path) {
 	try {
 		return path.split('.').reduce((acc, prop) => acc[prop], obj);
-	} catch (err) {
+	} catch (_err) {
 		return;
 	}
 }
@@ -70,7 +70,7 @@ function fuzzyBinarySearchWithLowerBias(array, path, target_value) {
 
 const DEFAULT_OPTIONS = {
 	usePieceStats: false,
-	seekableFrames: true,
+	seekableFrames: false,
 };
 
 export default class BaseGame {
@@ -105,7 +105,7 @@ export default class BaseGame {
 	onGameOver() {}
 	onNewGame() {}
 	onCurtainDown() {}
-	onTetris() {}
+	onTetris(_full_rows) {}
 
 	end() {
 		if (!this.over) {
@@ -141,17 +141,14 @@ export default class BaseGame {
 			}
 		}
 
-		if (this.frames.length > 0) {
-			this.duration = frame.ctime - this.frames[0].raw.ctime;
+		if (this.num_frames > 0 && this.start_ctime !== undefined) {
+			this.duration = frame.ctime - this.start_ctime;
 		}
 
 		// Warning: order of the 3 operations below matters!
 		const score_events = this._checkScore(frame);
 		const piece_events = this._checkPiece(frame);
-		const last_frame = this._addFrame(frame, {
-			score_events,
-			piece_events,
-		});
+		const last_frame = this._addFrame(frame);
 
 		// Check for das loss
 		if (last_frame.raw.instant_das === 0 && this.pieces.length >= 1) {
@@ -213,6 +210,8 @@ export default class BaseGame {
 			points: [],
 			clears: [],
 		};
+
+		this.num_frames = 0;
 
 		// this.data is used to track game stats and data as they progress
 		// snapshots of them will be stored in frames as needed
@@ -460,7 +459,7 @@ export default class BaseGame {
 
 	_addFrame(data) {
 		const frame = {
-			idx: this.frames.length,
+			idx: this.num_frames,
 			raw: data,
 
 			pieces: this.array_views.pieces,
@@ -471,6 +470,11 @@ export default class BaseGame {
 		};
 
 		this.frames.push(frame);
+		this.num_frames++;
+
+		if (!this.options.seekableFrames && this.frames.length > 2) {
+			this.frames.shift();
+		}
 
 		return frame;
 	}
@@ -785,7 +789,7 @@ export default class BaseGame {
 				this.data.num_blocks -= this.full_rows.length * 10;
 
 				if (this.full_rows.length === 4) {
-					this.onTetris();
+					this.onTetris([...this.full_rows]);
 				}
 
 				this.full_rows.length = 0;
@@ -810,7 +814,7 @@ export default class BaseGame {
 				this.data.num_blocks -= clear * 10;
 
 				if (clear === 4) {
-					this.onTetris();
+					this.onTetris([...this.full_rows]);
 				}
 
 				this.full_rows.length = 0;
@@ -852,7 +856,7 @@ export default class BaseGame {
 		this.prior_preview = data.preview;
 		this.pending_prior_preview = true;
 
-		if (data.cur_piece_das !== null) {
+		if (data.cur_piece_das != null) {
 			// record real das stats
 			this.data.das.cur = data.cur_piece_das;
 			this.data.das.total += data.cur_piece_das;
@@ -907,9 +911,11 @@ export default class BaseGame {
 			}
 		}
 
-		// record piece event before calculating deviation, so the array fuly represents the sequence
+		// record piece event before calculating deviation, so the array fully represents the sequence
 		// we will update piece event with the deviation reactively
 		this._recordPieceEvent(cur_piece, data);
+
+		const len = this.pieces.length;
 
 		// Handle deviation
 		let distance_square = 0;
@@ -919,7 +925,7 @@ export default class BaseGame {
 		PIECES.forEach(name => {
 			const stats = this.data.pieces[name];
 
-			distance_square += Math.pow(stats.count / this.pieces.length - 1 / 7, 2);
+			distance_square += Math.pow(stats.count / len - 1 / 7, 2);
 		});
 
 		last_piece_event.deviation =
@@ -928,9 +934,7 @@ export default class BaseGame {
 				Math.sqrt(distance_square / PIECES.length);
 
 		// handle deviation
-		const len = this.pieces.length;
-
-		if (len > 28) {
+		if (len >= 28) {
 			// compute the 28 and 56 deviation
 			// TODO: compute over "true" bags, that would always yield 0 deviation in modern tetrises
 			const counts = {};
@@ -966,6 +970,7 @@ export default class BaseGame {
 	}
 
 	_recordPieceEvent(piece, data) {
+		const board = new Board(data.field);
 		const evt = {
 			piece,
 			in_drought: this.data.i_droughts.cur >= DROUGHT_PANIC_THRESHOLD,
@@ -973,8 +978,8 @@ export default class BaseGame {
 			i_droughts: { ...this.data.i_droughts },
 			das: { ...this.data.das }, // TODO, make this more efficient for classic rom, no need to carry das object copies
 			pieces: { ...this.data.pieces }, // copy all including pieces - duplicate action below :'(
-			board: new Board(data.field).stats,
-			field: data.field, // Recorded for Stack rabbit integration - Ideally we should store the version WITHOUT The falling piece
+			board: board.stats,
+			field: board.getField(), // Recorded for Stack rabbit integration
 		};
 
 		// update tracker arrays

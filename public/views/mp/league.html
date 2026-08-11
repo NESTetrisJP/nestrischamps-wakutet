@@ -60,13 +60,13 @@
 			}
 
 			.score .aligner .diff {
-				animation: 0.5s ease-out fadeIn;
+				animation: var(--tdiff-anim) fadeIn;
 				opacity: 1;
 			}
 
 			.score .tetris_diff {
 				margin-top: -32px;
-				animation: 0.5s ease-out fadeOut;
+				animation: var(--tdiff-anim) fadeOut;
 				opacity: 0;
 			}
 
@@ -75,12 +75,12 @@
 			}
 
 			.score.with_tdiff .tetris_diff {
-				animation: 0.5s ease-out fadeIn;
+				animation: var(--tdiff-anim) fadeIn;
 				opacity: 1;
 			}
 
 			.score.with_tdiff .aligner .diff {
-				animation: 0.5s ease-out fadeOut;
+				animation: var(--tdiff-anim) fadeOut;
 				opacity: 0;
 			}
 
@@ -95,9 +95,10 @@
 				height: 68px;
 			}
 
-			.lines,
 			.next_piece {
-				width: 153px;
+				padding: 0;
+				width: 157px;
+				height: 72px;
 			}
 
 			.lines {
@@ -121,7 +122,8 @@
 			.name {
 				top: 938px;
 				width: 334px;
-				font-size: 28.01px; /* sad -_- */
+				font-size: 20.01px;
+				/* sad -_- */
 				line-height: 36px;
 				padding: 8px 0 4px 2px;
 				white-space: nowrap;
@@ -186,7 +188,8 @@
 			}
 
 			.drought .header {
-				padding-bottom: 4px; /* because the bar is thinner than text */
+				padding-bottom: 4px;
+				/* because the bar is thinner than text */
 			}
 
 			.drought .header img {
@@ -200,7 +203,7 @@
 				display: none;
 				position: absolute;
 				transform-origin: 50% 50%;
-				top: 150px;
+				top: 400px;
 				--offset: 341px;
 				right: var(--offset);
 			}
@@ -222,6 +225,15 @@
 				right: var(--offset);
 			}
 
+			.player_vid.focused {
+				width: 1920px;
+				height: 1080px;
+				top: 0;
+				left: -960px;
+				right: 960px;
+				z-index: 10;
+			}
+
 			#ticker {
 				position: absolute;
 				width: 1920px;
@@ -232,6 +244,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<template id="player">
 			<div class="player">
@@ -261,10 +274,10 @@
 				<div class="box score">
 					<div class="aligner">
 						<div class="value">0&#x202F;000&#x202F;000</div>
-						<div class="diff winning">0&#x202F;000&#x202F;000</div>
+						<div class="diff">0&#x202F;000&#x202F;000</div>
 					</div>
 					<div class="tetris_diff">
-						<span class="value">0.00</span><span class="label">Tetrises</span>
+						<span class="value">0.00</span><span class="label">Tetris</span>
 					</div>
 				</div>
 
@@ -323,7 +336,7 @@
 				players: 2,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { peerServerOptions } from '/views/constants.js';
@@ -332,33 +345,13 @@
 			import CompetitionPlayer from '/views/CompetitionPlayer.js';
 			import Competition from '/views/competition.js';
 			import InvisibleMixin from '/views/InvisibleMixin.js';
+			import { easeOutElastic, getRandomAngle } from '/js/anim.js';
 
-			// Penner easing
-			// http://robertpenner.com/easing/
-			function easeOutElastic(t, b, c, d) {
-				var s = 1.70158;
-				var p = 0;
-				var a = c;
-				if (t == 0) return b;
-				if ((t /= d) >= 1) return b + c;
-				if (!p) p = d * 0.3;
-				if (a < Math.abs(c)) {
-					a = c;
-					var s = p / 4;
-				} else var s = (p / (2 * Math.PI)) * Math.asin(c / a);
-				return (
-					a *
-						Math.pow(2, -10 * t) *
-						Math.sin(((t * d - s) * (2 * Math.PI)) / p) +
-					c +
-					b
-				);
-			}
-
-			const SHOW_SIMUL_TETRIS = /^[1-9]\d*$/.test(QueryString.get('simultris'));
-			const SIMUL_TETRIS_DELAY = SHOW_SIMUL_TETRIS
-				? parseInt(QueryString.get('simultris'), 10)
-				: 120;
+			const SHOW_SIMUL_TETRIS = QueryString.get('simultris') !== '0';
+			const SIMUL_TETRIS_DELAY =
+				SHOW_SIMUL_TETRIS && /^[1-9]\d*$/.test(QueryString.get('simultris'))
+					? parseInt(QueryString.get('simultris'), 10)
+					: 120;
 
 			// supply 0 to disable
 			const CYCLE_TDIFF = /^\d+$/.test(QueryString.get('cycle_tdiff'))
@@ -413,7 +406,6 @@
 							curtain,
 						},
 						{
-							field_pixel_size: 4.25,
 							running_trt_dot_size: 5,
 							preview_pixel_size: 3.75,
 							format_score: v => readableScoreFomatter(v),
@@ -474,20 +466,19 @@
 							// clear all ongoing simul-tetris timers for this match
 							while (sync_timers.length) clearTimeout(sync_timers.pop());
 
+							const start_time = Date.now();
+							const scale_start = 0;
+							const duration = 750;
+
 							match_players.forEach(player => {
 								window.cancelAnimationFrame(player.animationId);
 
 								// show the simul-tetris sign
-								const scale_start = 0;
 								const scale_end = 0.85 + Math.random() * 0.1;
 								const scale_change = scale_end - scale_start;
-								const angle = -10 + Math.random() * 20;
-								const duration = 750;
+								const angle = getRandomAngle(2, 10);
 
 								player.dom.simul_tetris.style.display = 'inline';
-								player.dom.simul_tetris.style.transform = `scale(${scale_start}) rotate(${angle}deg)`;
-
-								const start_time = Date.now();
 
 								function step() {
 									const elapsed = Date.now() - start_time;
@@ -511,7 +502,7 @@
 									}
 								}
 
-								player.animationId = window.requestAnimationFrame(step);
+								step();
 							});
 						}
 					};
@@ -527,9 +518,27 @@
 						player.dom.score_box.classList.toggle('with_tdiff');
 					});
 				}, CYCLE_TDIFF * 1000);
+
+				// player 1 and player 2 will showe the tetris diff at different times
+				players[0].dom.score_box.classList.add('with_tdiff');
 			}
 
-			const competition = new Competition(players);
+			let focusedPlayer = null;
+
+			const competition = new Competition(players, {
+				focusPlayer: pidx => {
+					if (focusedPlayer?.dom?._video_iframe) {
+						focusedPlayer.dom._video_iframe.classList.remove('focused');
+					}
+					if (pidx === null) {
+						focusedPlayer = null;
+						return;
+					} else if (players[pidx]) {
+						focusedPlayer = players[pidx];
+						focusedPlayer.dom._video_iframe?.classList.add('focused');
+					}
+				},
+			});
 
 			// expose API into window for debugging
 			window._players = players;

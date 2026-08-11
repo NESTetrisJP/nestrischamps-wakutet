@@ -1,7 +1,7 @@
 // Minimum amount of game tracking to do server side to be able to report games
 import BinaryFrame from '../public/js/BinaryFrame.js';
 import ScoreDAO from '../daos/ScoreDAO.js';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 
 // The below is to upload game frames to S3
 // That should be refactored into another file
@@ -11,6 +11,7 @@ import zlib from 'zlib';
 
 import fs from 'fs';
 import path from 'path';
+import config from './config.js';
 
 const PIECES = ['T', 'J', 'Z', 'O', 'S', 'L', 'I'];
 const SCORE_BASES = [0, 40, 100, 300, 1200];
@@ -26,27 +27,27 @@ class Game {
 		this.over = false;
 		this.num_frames = 0;
 
-		this.save_frame = process.env.FF_SAVE_GAME_FRAMES === '1';
+		this.save_frame = config.get('game.save_frames');
 
 		if (this.save_frame) {
 			// We use ulid ids for games, and games get binned into part of the 10 bits timestamp
 			// this means each folder represents about ~9h, which should be about one siting
 			// the extension ngf stands for "Nestrischamps Game Frames"
-			const ulid = ULID.ulid();
-			const dir = `games/${user.id}/${ulid.slice(0, 5)}`;
-			const file = `${ulid.slice(5)}.ngf`;
+			const gameid = ulid();
+			const dir = `games/${user.id}/${gameid.slice(0, 5)}`;
+			const file = `${gameid.slice(5)}.ngf`;
 
 			this.frame_file = `${dir}/${file}`;
 
 			// Set up a streaming upload system to S3
 			this.frame_stream = zlib.createGzip();
 
-			if (process.env.GAME_FRAMES_BUCKET) {
+			if (config.get('game.frames_bucket')) {
 				const upload = new Upload({
-					client: new S3Client({ region: process.env.GAME_FRAMES_REGION }),
+					client: new S3Client({ region: config.get('game.frames_region') }),
 					leavePartsOnError: false,
 					params: {
-						Bucket: process.env.GAME_FRAMES_BUCKET,
+						Bucket: config.get('game.frames_bucket'),
 						Key: this.frame_file,
 						Body: this.frame_stream,
 						ACL: 'public-read',
@@ -65,7 +66,7 @@ class Game {
 							`Unable to upload game file ${this.frame_file}: ${err.message}`
 						)
 				);
-			} else if (process.env.IS_PUBLIC_SERVER !== '1') {
+			} else if (!config.get('server.is_public')) {
 				// Saving on local filesystem
 
 				fs.mkdirSync(dir, { recursive: true }); // sync action is no good! Can we do without the sync? 😰
@@ -78,6 +79,10 @@ class Game {
 		if (!this.over) {
 			this._doGameOver();
 		}
+	}
+
+	setCompetition(competition) {
+		this.competition = !!competition;
 	}
 
 	setFrame(frame) {
@@ -104,6 +109,7 @@ class Game {
 			this.num_pieces = 0;
 			this.prior_preview = 'O';
 
+			this.tracked_lines = 0;
 			this.tetris_lines = 0;
 
 			this.cur_drought = 0;
@@ -303,19 +309,44 @@ class Game {
 			return;
 		}
 
-		ScoreDAO.recordGame(this.user, report).then(
-			score_id => {
-				console.log(
-					`Recorded new game for user ${this.user.login} (${this.user.id}) with id ${score_id}`
-				);
-				this.user.send(['scoreRecorded', this.user.id, score_id]);
-			},
-			err => {
-				console.log('Unable to record game');
-				console.error(err);
-				// TODO delete replay file too
-			}
-		);
+		this.recordGame(report);
+	}
+
+	async recordGame(report) {
+		let score_id = null;
+
+		try {
+			score_id = await ScoreDAO.recordGame(this.user, report);
+			console.log(
+				`Recorded new game for user ${this.user.login} (${this.user.id}) with id ${score_id}`
+			);
+			this.user.send(['scoreRecorded', this.user.id, score_id]);
+		} catch (err) {
+			console.log('Unable to record game');
+			console.error(err);
+			// TODO delete replay file too
+		}
+
+		if (!global.__ntc_event_name) return;
+		if (!score_id) return;
+		if (!this.user.on_behalf_of_user) return;
+
+		try {
+			// TODO: retrieve event name from a module rather than global scope
+			await ScoreDAO.recordQualResult(
+				this.user,
+				this.user.on_behalf_of_user,
+				score_id,
+				global.__ntc_event_name
+			);
+			console.log(
+				`Recorded new qual result for event ${global.__ntc_event_name}`
+			);
+		} catch (err) {
+			console.log('Unable to record qual result');
+			console.error(err);
+			// TODO delete replay file too
+		}
 	}
 
 	_isSameField(data) {
@@ -358,10 +389,15 @@ class Game {
 		if (cleared) {
 			this.data.lines = data.lines;
 
-			this.clears.push(cleared);
+			if (cleared > 0) {
+				// negative clears are due to capture issues, we ignore 🤷
 
-			if (cleared === 4) {
-				this.tetris_lines += cleared;
+				this.tracked_lines += cleared;
+				this.clears.push(cleared);
+
+				if (cleared === 4) {
+					this.tetris_lines += cleared;
+				}
 			}
 
 			// when line changes, level may have changed
@@ -425,8 +461,8 @@ class Game {
 		let tetris_rate = null;
 		let das_avg = -1;
 
-		if (this.clears.length) {
-			tetris_rate = this.tetris_lines / this.data.lines;
+		if (this.tracked_lines) {
+			tetris_rate = this.tetris_lines / this.tracked_lines;
 		}
 
 		if (this.pieces.length && this.das_total) {

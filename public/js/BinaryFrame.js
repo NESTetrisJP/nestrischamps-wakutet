@@ -1,15 +1,36 @@
-const FORMAT_VERSION = 3;
+const FORMAT_VERSION = 4;
 
-const FRAME_SIZE_BY_VERSION = {
-	1: 71,
-	2: 72,
-	3: 73,
-};
+const MINIMAL = 0b00;
+const CLASSIC = 0b01;
+const DAS_TRAINER = 0b10;
 
 const GAME_TYPE = {
-	MINIMAL: 0,
-	CLASSIC: 1,
-	DAS_TRAINER: 2,
+	MINIMAL,
+	CLASSIC,
+	DAS_TRAINER,
+};
+
+const FRAME_SIZE_BY_VERSION = {
+	1: {
+		[MINIMAL]: 71,
+		[CLASSIC]: 71,
+		[DAS_TRAINER]: 71,
+	},
+	2: {
+		[MINIMAL]: 72,
+		[CLASSIC]: 72,
+		[DAS_TRAINER]: 72,
+	},
+	3: {
+		[MINIMAL]: 73,
+		[CLASSIC]: 73,
+		[DAS_TRAINER]: 73,
+	},
+	4: {
+		[MINIMAL]: 64,
+		[CLASSIC]: 74,
+		[DAS_TRAINER]: 65,
+	},
 };
 
 const PIECE_TO_VALUE = {
@@ -53,6 +74,13 @@ export default class BinaryFrame {
 		// sanitize values to represent null
 		const sanitized = { ...pojo };
 
+		if (sanitized.player_num == null) {
+			sanitized.player_num = 0;
+		}
+
+		sanitized.game_type |= 0;
+		sanitized.game_type &= 0b11;
+
 		NULLABLE_FIELDS.forEach(field => {
 			// capture null and undefined on purpose
 			if (sanitized[field] == null) {
@@ -77,14 +105,22 @@ export default class BinaryFrame {
 		}
 
 		// fields are now clean, encode!
-
-		const buffer = new Uint8Array(FRAME_SIZE_BY_VERSION[FORMAT_VERSION]);
+		const buffer = new Uint8Array(FRAME_SIZE_BY_VERSION[FORMAT_VERSION][sanitized.game_type]);
 
 		let bidx = 0; // byte index
 
 		// header
-		buffer[bidx++] =
-			((FORMAT_VERSION & 0b111) << 5) | ((sanitized.game_type & 0b11) << 3);
+		buffer[bidx++] = 0b10000000 |
+			((FORMAT_VERSION & 0b11111) << 2) | sanitized.game_type; // game_type was aleady sanitized to 2 bits
+
+		// player number (5) + lines (1) + score (2)
+		buffer[bidx++] = ((sanitized.player_num & 0b11111) << 3) | ((sanitized.score & 0x3000000) >> 24) | ((sanitized.lines & 0x1000) >> 10);
+
+		// Note: Instead of a 2-bytes header, we could have a 3 bytes header to provide some bits for info flags (e.g. provide bit flag if OCR was done on 7-digit score)
+		// See discord thread with message from Fractal here: https://discordapp.com/channels/817528744565932043/875591588359831602/1485478482841440417
+		// This was NOT done in V4 however, because there's only one potential flag (7-digit score), so it's not worth wasting a byte for it, and we do not need more than 5 bits for player_num
+		// So we used the last  bits to expand the range of lines and score
+		// A new transport version can always be introduced later if there's a need for it
 
 		// gameid - 16 bits
 		buffer[bidx++] = (sanitized.gameid & 0xff00) >> 8;
@@ -106,30 +142,34 @@ export default class BinaryFrame {
 		// score - 24 bits
 		buffer[bidx++] = (sanitized.score & 0xff0000) >> 16;
 		buffer[bidx++] = (sanitized.score & 0x00ff00) >> 8;
-		buffer[bidx++] = (sanitized.score & 0x0000ff);
+		buffer[bidx++] = (sanitized.score & 0x0000ff) >> 0;
 
 		// instant_das (5) + preview (3)
 		buffer[bidx++] =
 			((sanitized.instant_das & 0b11111) << 3) | (sanitized.preview & 0b111);
 
-		// cur piece das (5) + cur piece (3)
-		buffer[bidx++] =
-			((sanitized.cur_piece_das & 0b11111) << 3) |
-			(sanitized.cur_piece & 0b111);
+		if (sanitized.game_type === GAME_TYPE.CLASSIC || sanitized.game_type === GAME_TYPE.DAS_TRAINER) {
+			// cur piece das (5) + cur piece (3)
+			buffer[bidx++] =
+				((sanitized.cur_piece_das & 0b11111) << 3) |
+				(sanitized.cur_piece & 0b111);
+		}
 
-		// piece stats (10 bits each)
-		buffer[bidx++] = ((sanitized.T & 0b1111111100) >> 2);
-		buffer[bidx++] = ((sanitized.T & 0b0000000011) << 6) | ((sanitized.J & 0b1111110000) >> 4);
-		buffer[bidx++] = ((sanitized.J & 0b0000001111) << 4) | ((sanitized.Z & 0b1111000000) >> 6);
-		buffer[bidx++] = ((sanitized.Z & 0b0000111111) << 2) | ((sanitized.O & 0b1100000000) >> 8);
-		buffer[bidx++] = ((sanitized.O & 0b0011111111) << 0);
+		if (sanitized.game_type === GAME_TYPE.CLASSIC) {
+			// piece stats (10 bits each)
+			buffer[bidx++] = ((sanitized.T & 0b1111111100) >> 2);
+			buffer[bidx++] = ((sanitized.T & 0b0000000011) << 6) | ((sanitized.J & 0b1111110000) >> 4);
+			buffer[bidx++] = ((sanitized.J & 0b0000001111) << 4) | ((sanitized.Z & 0b1111000000) >> 6);
+			buffer[bidx++] = ((sanitized.Z & 0b0000111111) << 2) | ((sanitized.O & 0b1100000000) >> 8);
+			buffer[bidx++] = ((sanitized.O & 0b0011111111) << 0);
 
-		buffer[bidx++] = ((sanitized.S & 0b1111111100) >> 2);
-		buffer[bidx++] = ((sanitized.S & 0b0000000011) << 6) | ((sanitized.L & 0b1111110000) >> 4);
-		buffer[bidx++] = ((sanitized.L & 0b0000001111) << 4) | ((sanitized.I & 0b1111000000) >> 6);
-		buffer[bidx++] = ((sanitized.I & 0b0000111111) << 2);
+			buffer[bidx++] = ((sanitized.S & 0b1111111100) >> 2);
+			buffer[bidx++] = ((sanitized.S & 0b0000000011) << 6) | ((sanitized.L & 0b1111110000) >> 4);
+			buffer[bidx++] = ((sanitized.L & 0b0000001111) << 4) | ((sanitized.I & 0b1111000000) >> 6);
+			buffer[bidx++] = ((sanitized.I & 0b0000111111) << 2);
 
-		// 2 wasted bits here
+			// 2 wasted bits here
+		}
 
 		// field
 		for (
@@ -151,12 +191,19 @@ export default class BinaryFrame {
 		const f = BinaryFrame.getFrameFromBuffer(buffer_or_uintarray); // may throw
 
 		const pojo = {};
+		const isVersionGTE4 = f[0] & 0b10000000;
 
 		let bidx = 0;
 
-		pojo.version = (f[bidx] & 0b11100000) >> 5;
-		pojo.game_type = (f[bidx] & 0b11000) >> 3;
-		pojo.player_num = f[bidx++] & 0b111;
+		if (isVersionGTE4) {
+			pojo.version = (f[bidx] & 0b01111100) >> 2;
+			pojo.game_type = f[bidx++] & 0b11;
+			pojo.player_num = (f[bidx++] & 0b11111000) >> 3;
+		} else {
+			pojo.version = (f[bidx] & 0b11100000) >> 5;
+			pojo.game_type = (f[bidx] & 0b11000) >> 3;
+			pojo.player_num = f[bidx++] & 0b111;
+		}
 
 		pojo.gameid = (f[bidx++] << 8) | f[bidx++];
 
@@ -173,22 +220,33 @@ export default class BinaryFrame {
 
 			pojo.score = (f[bidx++] << 16) | (f[bidx++] << 8) | f[bidx++];
 
+			if (isVersionGTE4) {
+				pojo.lines |= (f[1] & 0b100) << 10;
+				pojo.score |= (f[1] & 0b011) << 24;
+			}
+
 			pojo.instant_das = (f[bidx] & 0b11111000) >> 3;
 			pojo.preview = f[bidx++] & 0b111;
 
-			pojo.cur_piece_das = (f[bidx] & 0b11111000) >> 3;
-			pojo.cur_piece = f[bidx++] & 0b111;
+			// yuk, conditional is becoming hard to read...
+			if (!isVersionGTE4 || pojo.game_type === GAME_TYPE.CLASSIC || pojo.game_type === GAME_TYPE.DAS_TRAINER) {
+				pojo.cur_piece_das = (f[bidx] & 0b11111000) >> 3;
+				pojo.cur_piece = f[bidx++] & 0b111;
+			}
 
 			// piece stats
-			if (pojo.version === 3) { // v3 - 10 bits per field
-				pojo.T = ((f[bidx++] & 0b11111111) << 2) | ((f[bidx] & 0b11000000) >> 6);
-				pojo.J = ((f[bidx++] & 0b00111111) << 4) | ((f[bidx] & 0b11110000) >> 4);
-				pojo.Z = ((f[bidx++] & 0b00001111) << 6) | ((f[bidx] & 0b11111100) >> 2);
-				pojo.O = ((f[bidx++] & 0b00000011) << 8) | ((f[bidx] & 0b11111111) >> 0);
-				bidx++;
-				pojo.S = ((f[bidx++] & 0b11111111) << 2) | ((f[bidx] & 0b11000000) >> 6);
-				pojo.L = ((f[bidx++] & 0b00111111) << 4) | ((f[bidx] & 0b11110000) >> 4);
-				pojo.I = ((f[bidx++] & 0b00001111) << 6) | ((f[bidx] & 0b11111100) >> 2);
+			if (pojo.version >= 3) { // v>=3 - 10 bits per field
+				if (!isVersionGTE4 || pojo.game_type === GAME_TYPE.CLASSIC) {
+					pojo.T = ((f[bidx++] & 0b11111111) << 2) | ((f[bidx] & 0b11000000) >> 6);
+					pojo.J = ((f[bidx++] & 0b00111111) << 4) | ((f[bidx] & 0b11110000) >> 4);
+					pojo.Z = ((f[bidx++] & 0b00001111) << 6) | ((f[bidx] & 0b11111100) >> 2);
+					pojo.O = ((f[bidx++] & 0b00000011) << 8) | ((f[bidx] & 0b11111111) >> 0);
+					bidx++;
+					pojo.S = ((f[bidx++] & 0b11111111) << 2) | ((f[bidx] & 0b11000000) >> 6);
+					pojo.L = ((f[bidx++] & 0b00111111) << 4) | ((f[bidx] & 0b11110000) >> 4);
+					pojo.I = ((f[bidx++] & 0b00001111) << 6) | ((f[bidx] & 0b11111100) >> 2);
+					bidx++;
+				}
 			}
 			else { // v2 - 9 bits per field
 				pojo.T = ((f[bidx++] & 0b11111111) << 1) | ((f[bidx] & 0b10000000) >> 7);
@@ -198,9 +256,9 @@ export default class BinaryFrame {
 				pojo.S = ((f[bidx++] & 0b00001111) << 5) | ((f[bidx] & 0b11111000) >> 3);
 				pojo.L = ((f[bidx++] & 0b00000111) << 6) | ((f[bidx] & 0b11111100) >> 2);
 				pojo.I = ((f[bidx++] & 0b00000011) << 7) | ((f[bidx] & 0b11111110) >> 1);
+				bidx++;
 			}
 
-			bidx++;
 		} else {
 			// version 1
 			pojo.score =
@@ -242,12 +300,17 @@ export default class BinaryFrame {
 		// we've extracted all the value, now checks for nulls
 
 		if (pojo.version >= 2) {
-			if (pojo.score === 0xffffff) pojo.score = null;
-			if (pojo.lines === 0xfff) pojo.lines = null;
+			if (pojo.version >= 4) {
+				if (pojo.score === 0x3ffffff) pojo.score = null;
+				if (pojo.lines === 0x1fff) pojo.lines = null;
+			} else {
+				if (pojo.score === 0xffffff) pojo.score = null;
+				if (pojo.lines === 0xfff) pojo.lines = null;
+			}
 			if (pojo.level === 0xff) pojo.level = null;
 
-			// v3: 10 bits, v2: 9 bits
-			const piece_null_value = pojo.version === 3 ? 0x3ff : 0x1ff;
+			// v>=3: 10 bits, v2: 9 bits
+			const piece_null_value = pojo.version >= 3 ? 0x3ff : 0x1ff;
 
 			PIECES.forEach(piece => {
 				if (pojo[piece] === piece_null_value) {
@@ -286,12 +349,35 @@ export default class BinaryFrame {
 	}
 
 	static getCTime(frame_arr) {
+		const isVersionGTE4 = frame_arr[0] & 0b10000000;
+		let bidx = isVersionGTE4 ? 4 : 3; // must account for v>=4 extra header byte
 		return (
-			(frame_arr[3] << 20) |
-			(frame_arr[4] << 12) |
-			(frame_arr[5] << 4) |
-			((frame_arr[6] & 0xf0) >> 4)
+			(frame_arr[bidx++] << 20) |
+			(frame_arr[bidx++] << 12) |
+			(frame_arr[bidx++] << 4) |
+			((frame_arr[bidx] & 0xf0) >> 4)
 		);
+	}
+
+	static getFrameVersion(frame_arr) {
+		const isVersionGTE4 = frame_arr[0] & 0b10000000;
+		return isVersionGTE4 ? (frame_arr[0] & 0b01111100) >> 2 : frame_arr[0] >> 5;
+	}
+
+	static setPlayerIndex(frame_arr, player_idx) {
+		const isVersionGTE4 = BinaryFrame.getFrameVersion(frame_arr) >= 4;
+
+		if (isVersionGTE4) {
+			frame_arr[1] = (frame_arr[1] & 0b00000111) | ((player_idx & 0b11111) << 3);
+		} else {
+			frame_arr[0] = (frame_arr[0] & 0b11111000) | (player_idx & 0b111);
+		}
+	}
+
+	static getFrameSize(frame_arr) {
+		const version = BinaryFrame.getFrameVersion(frame_arr);
+		const game_type = version >= 4 ? (frame_arr[0] & 0b11) : (frame_arr[0] & 0b11000) >> 3;
+		return FRAME_SIZE_BY_VERSION[version]?.[game_type];
 	}
 
 	static getFrameFromBuffer(buffer_or_uintarray) {
@@ -303,13 +389,11 @@ export default class BinaryFrame {
 			f = new Uint8Array(buffer_or_uintarray);
 		}
 
-		const version = f[0] >> 5; // 3 bits with mask 0b11100000
+		const normal_size = BinaryFrame.getFrameSize(f);
 
-		if (!FRAME_SIZE_BY_VERSION[version]) {
-			throw new Error(`Invalid Frame: Version not supported: ${version}`);
+		if (!normal_size) {
+			throw new Error(`Invalid Frame: Version not supported: header byte: ${f[0].toString(2)}`);
 		}
-
-		const normal_size = FRAME_SIZE_BY_VERSION[version];
 
 		if (f.length === normal_size) {
 			return f;
@@ -340,4 +424,3 @@ export default class BinaryFrame {
 }
 
 BinaryFrame.GAME_TYPE = GAME_TYPE;
-BinaryFrame.FRAME_SIZE_BY_VERSION = FRAME_SIZE_BY_VERSION;

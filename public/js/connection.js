@@ -1,7 +1,5 @@
 import BinaryFrame from '/js/BinaryFrame.js';
 
-const ID_MIN_RESET_TIME_IN_SECONDS = 5;
-
 export default class Connection {
 	constructor(uri = null, extra_search_params = null) {
 		let url;
@@ -52,7 +50,7 @@ export default class Connection {
 		}
 	}
 
-	_handleError(err) {
+	_handleError(_err) {
 		// console.error(err);
 	}
 
@@ -68,17 +66,6 @@ export default class Connection {
 						this.start_ts = data[1].server_ts;
 						this.id_ts = Date.now();
 						this.onInit();
-						return;
-					}
-					case '_id': {
-						if (
-							data[1] !== this.id ||
-							Date.now() - this.id_ts > ID_MIN_RESET_TIME_IN_SECONDS * 1000
-						) {
-							this.id = data[1];
-							this.id_ts = Date.now();
-							this.onInit();
-						}
 						return;
 					}
 					case '_kick': {
@@ -115,7 +102,7 @@ export default class Connection {
 			this.socket.removeEventListener('message', this._handleMessage);
 			this.socket.close();
 			this.socket = null;
-		} catch (e) {}
+		} catch (_err) {}
 	}
 
 	connect() {
@@ -154,6 +141,6 @@ export default class Connection {
 			} else {
 				this.socket.send(JSON.stringify(data));
 			}
-		} catch (err) {}
+		} catch (_err) {}
 	}
 }

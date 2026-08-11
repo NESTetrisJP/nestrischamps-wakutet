@@ -2,34 +2,38 @@
 
 sudo apt update
 sudo apt upgrade -y
-sudo apt install -y git build-essential vim zsh gawk postgresql iptables coturn
+sudo apt install -y git build-essential vim zsh gawk postgresql coturn
+
+# Install oh-my-zsh without user interaction
+sudo chsh -s $(which zsh) "$(whoami)"
+export RUNZSH=no
+export KEEP_ZSHRC=yes
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" --unattended
 
 echo "CREATE USER nestrischamps with encrypted password 'nestrischamps'; CREATE DATABASE nestrischamps with owner=nestrischamps;" | sudo -u postgres psql
 
 DB_URL="postgres://nestrischamps:nestrischamps@localhost:5432/nestrischamps?sslmode=disable"
 
+cd ~ # go to home dir
 mkdir -p src
 cd src
-git clone https://github.com/timotheeg/nestrischamps.git
+
+git clone https://github.com/nestrischamps/nestrischamps.git
 cd nestrischamps
 mkdir -p logs
 git checkout main
 
 cat setup/db.sql | psql "${DB_URL}"
 
-sudo apt-get install -y ca-certificates curl gnupg
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-
-NODE_MAJOR=20
-
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
-
-sudo apt-get update
+# install nodejs - see documentation https://github.com/nodesource/distributions#installation-instructions-deb
+NODE_MAJOR=24
+curl -fsSL https://deb.nodesource.com/setup_$NODE_MAJOR.x | sudo -E bash -
 sudo apt install -y nodejs
 
 npm install
 sudo npm install peer -g
+
+HOSTNAME=nestrischamps.local
 
 # generate the server keys
 openssl req -x509 \
@@ -37,16 +41,34 @@ openssl req -x509 \
   -nodes \
   -newkey rsa:2048 \
   -days 3650 \
-  -subj "/C=SG/O=Yobi/OU=Nestrischamps/CN=nestrischamps.local/" \
-  -keyout nestrischamps.local.key \
-  -out nestrischamps.local.crt
+  -subj "/C=SG/O=Yobi/OU=Nestrischamps/CN=${HOSTNAME}/" \
+  -keyout ${HOSTNAME}.key \
+  -out ${HOSTNAME}.crt
 
-sed -r -i 's/isLocalRpi = false/isLocalRpi = true/g' public/views/constants.js
+tee public/js/peerjsOptions.js > /dev/null << EOF
+export const peerServerOptions = {
+	host: '${HOSTNAME}',
+	path: '/',
+	port: 9000,
+	secure: true,
+	config: {
+		iceServers: [
+			{ urls: ['stun:${HOSTNAME}:3478'] },
+			{
+				urls: ['turn:${HOSTNAME}:3478'],
+				username: 'ntc',
+				credential: 'ntc',
+			},
+		],
+	},
+};
+EOF
+
 
 SESSION_SECRET=$(echo "console.log(require('ulid').ulid())" | node)
 PORT=5443
-TLS_KEY_PATH=/home/yobi/src/nestrischamps/nestrischamps.local.key
-TLS_CERT_PATH=/home/yobi/src/nestrischamps/nestrischamps.local.crt
+TLS_KEY_PATH=/home/yobi/src/nestrischamps/${HOSTNAME}.key
+TLS_CERT_PATH=/home/yobi/src/nestrischamps/${HOSTNAME}.crt
 
 tee .env > /dev/null << EOF
 TLS_KEY=${TLS_KEY_PATH}
@@ -55,6 +77,10 @@ PORT=${PORT}
 DATABASE_URL=${DB_URL}
 SESSION_SECRET=${SESSION_SECRET}
 FF_SAVE_GAME_FRAMES=1
+
+LOCAL_USERS_ALLOW_IMPORT=0
+LOCAL_USERS_REFRESH=0
+LOCAL_USERS_CSV_URL=
 EOF
 
 sudo tee /etc/systemd/system/nestrischamps.service > /dev/null << EOF
@@ -124,14 +150,21 @@ sudo systemctl restart nestrischamps
 sudo systemctl restart peerjs
 sudo systemctl restart coturn
 
-sudo iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port ${PORT}
 
-sleep 5
+# create tables and chains if they do not exist
+sudo nft 'add table ip  nat' 2>/dev/null || true
+sudo nft 'add chain ip  nat PREROUTING { type nat hook prerouting priority -100; }' 2>/dev/null || true
+sudo nft 'add table ip6 nat' 2>/dev/null || true
+sudo nft 'add chain ip6 nat PREROUTING { type nat hook prerouting priority -100; }' 2>/dev/null || true
 
-echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
-echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
+# add rules for port 443 redirection to our app port on both ipv4 and ipv6
+sudo nft add rule ip  nat PREROUTING tcp dport 443 redirect to :"$PORT"
+sudo nft add rule ip6 nat PREROUTING tcp dport 443 redirect to :"$PORT"
 
-sudo apt install -y iptables-persistent
+# persist
+sudo nft list ruleset | sudo tee /etc/nftables.conf >/dev/null
+sudo systemctl enable --now nftables
+
 
 # generate public key fingerprint to tell OBS we trust the server
 PUB_KEY_FINGERPRINT=$(openssl x509 -in ${TLS_CERT_PATH} -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64)

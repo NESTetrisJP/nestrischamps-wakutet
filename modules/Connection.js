@@ -2,7 +2,7 @@
 
 import _ from 'lodash';
 import EventEmitter from 'events';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 
 import BinaryFrame from '../public/js/BinaryFrame.js';
 
@@ -17,7 +17,7 @@ class Connection extends EventEmitter {
 	constructor(user, socket, meta = new URLSearchParams()) {
 		super();
 
-		this.id = `NTC${ULID.ulid()}`; // NTC prefix for NesTrisChamps
+		this.id = `NTC${ulid()}`; // NTC prefix for NesTrisChamps
 		this.user = user;
 		this.socket = socket;
 
@@ -53,10 +53,6 @@ class Connection extends EventEmitter {
 				id: this.id,
 			},
 		]);
-
-		// for backward compatibility
-		// TODO: remove after a while
-		this.send(['_id', this.id]);
 	}
 
 	send(message) {
@@ -83,7 +79,7 @@ class Connection extends EventEmitter {
 
 	ping() {
 		this.is_alive = false;
-		this.socket.ping(_.noop); // TODO: handle pingt timeout (pong not coming back)
+		this.socket.ping(_.noop); // TODO: handle ping timeout (pong not coming back)
 	}
 
 	doClose(code, reason) {
@@ -111,7 +107,7 @@ class Connection extends EventEmitter {
 		} else {
 			try {
 				message = JSON.parse(message);
-			} catch (err) {
+			} catch (_err) {
 				console.warn(
 					`Received non JSON message on connection ${this.id}: ${message
 						.toString()

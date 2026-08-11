@@ -131,20 +131,14 @@
 				video: '1280x720',
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { translate, readableScoreFomatter } from '/views/utils.js';
 			import QueryString from '/js/QueryString.js';
 			import CTMCompetitionPlayer from '/views/CTMCompetitionPlayer.js';
 			import Competition from '/views/competition.js';
-
-			function easeInOutBack(t, b, c, d, s) {
-				if (s == undefined) s = 1.70158;
-				if ((t /= d / 2) < 1)
-					return (c / 2) * (t * t * (((s *= 1.525) + 1) * t - s)) + b;
-				return (c / 2) * ((t -= 2) * t * (((s *= 1.525) + 1) * t + s) + 2) + b;
-			}
+			import { easeInOutBack } from '/js/anim.js';
 
 			const players_node = document.querySelector('#playing_fields');
 			const player_template = document.getElementById('player');
@@ -226,7 +220,6 @@
 						sponsor_logo: player_node.querySelector('.redbull_approves'),
 					},
 					{
-						field_pixel_size: 220 / 80,
 						preview_pixel_size: 2.3,
 						preview_align: 'cc',
 						stereo: translate([1, 2], [-1, 1], num),

@@ -45,7 +45,7 @@ const start = Date.now();
 		} else if (/\.json$/.test(filename)) {
 			try {
 				layout_data.info = JSON.parse(fs.readFileSync(filename));
-			} catch (err) {
+			} catch (_err) {
 				// ignore
 			}
 		}

@@ -1,20 +1,21 @@
 import express from 'express';
-import ULID from 'ulid';
+import { ulid } from 'ulid';
 import got from 'got';
 
 import middlewares from '../modules/middlewares.js';
 
 import { OAuth2Client as GoogleOAuth2Client } from 'google-auth-library';
+import config from '../modules/config.js';
 
 const googleOAuth2Client = new GoogleOAuth2Client(
-	process.env.GOOGLE_AUTH_CLIENT_ID,
-	process.env.GOOGLE_AUTH_CLIENT_SECRET,
-	process.env.GOOGLE_AUTH_REDIRECT_URL
+	config.get('auth.google.client_id'),
+	config.get('auth.google.client_secret'),
+	config.get('auth.google.redirect_url')
 );
 
 const TWITCH_LOGIN_BASE_URI = 'https://id.twitch.tv/oauth2/authorize?';
 const TWITCH_LOGIN_QS = new URLSearchParams({
-	client_id: process.env.TWITCH_CLIENT_ID,
+	client_id: config.get('auth.twitch.client_id'),
 	scope: 'user:read:email chat:read',
 	response_type: 'code',
 	force_verify: true,
@@ -22,7 +23,7 @@ const TWITCH_LOGIN_QS = new URLSearchParams({
 
 const DISCORD_LOGIN_BASE_URI = 'https://discord.com/oauth2/authorize?';
 const DISCORD_LOGIN_QS = new URLSearchParams({
-	client_id: process.env.DISCORD_CLIENT_ID,
+	client_id: config.get('auth.discord.client_id'),
 	scope: 'identify email',
 	response_type: 'code',
 	force_verify: true,
@@ -35,7 +36,7 @@ const router = express.Router();
 function getTwitchAuthUrl(req) {
 	TWITCH_LOGIN_QS.set(
 		'redirect_uri',
-		`${process.env.IS_PUBLIC_SERVER ? 'https' : req.protocol}://${req.get(
+		`${config.get('server.is_public') ? 'https' : req.protocol}://${req.get(
 			'host'
 		)}/auth/twitch/callback`
 	);
@@ -45,10 +46,23 @@ function getTwitchAuthUrl(req) {
 	return `${TWITCH_LOGIN_BASE_URI}${qs}`;
 }
 
-function getGoogleAuthUrl() {
+// replace your current getGoogleAuthUrl() with this version
+function getGoogleAuthUrl(req) {
+	const state = ulid();
+	const nonce = ulid();
+
+	// store for callback verification
+	req.session.google_oauth_state = state;
+	req.session.google_oauth_nonce = nonce;
+
 	return googleOAuth2Client.generateAuthUrl({
 		access_type: 'offline',
-		scope: ['profile', 'email'],
+		// prompt: 'consent', // ensures refresh_token on first consent
+		scope: ['openid', 'email', 'profile'],
+		state,
+		// nonce is a valid OIDC param supported by Google
+		// TypeScript users: you may need a ts-ignore if your types are older
+		nonce,
 	});
 }
 
@@ -62,7 +76,7 @@ function getDiscordAuthUrl(req) {
 
 	return `${DISCORD_LOGIN_BASE_URI}${qs}`;
 }
-if (process.env.IS_PUBLIC_SERVER === '1') {
+if (config.get('server.is_public')) {
 	router.get('/', (_req, res) => {
 		res.render('login');
 	});
@@ -130,8 +144,8 @@ router.get('/twitch/callback', async (req, res) => {
 			'https://id.twitch.tv/oauth2/token',
 			{
 				searchParams: {
-					client_id: process.env.TWITCH_CLIENT_ID,
-					client_secret: process.env.TWITCH_CLIENT_SECRET,
+					client_id: config.get('auth.twitch.client_id'),
+					client_secret: config.get('auth.twitch.client_secret'),
 					code: req.query.code,
 					grant_type: 'authorization_code',
 					redirect_uri: `${req.protocol}://${req.get(
@@ -164,7 +178,7 @@ router.get('/twitch/callback', async (req, res) => {
 			'https://api.twitch.tv/helix/users',
 			{
 				headers: {
-					'Client-Id': process.env.TWITCH_CLIENT_ID,
+					'Client-Id': config.get('auth.twitch.client_id'),
 					'Authorization': `Bearer ${token.access_token}`,
 				},
 				searchParams: {
@@ -183,7 +197,7 @@ router.get('/twitch/callback', async (req, res) => {
 		);
 
 		// augment use object with data we retrieve previously
-		user_object.secret = ULID.ulid();
+		user_object.secret = ulid();
 
 		// NEED more logic here to check BOTh the users and oauth users table sigh...
 		const user = await UserDAO.createUser(user_object, {
@@ -238,24 +252,44 @@ router.get('/twitch/callback', async (req, res) => {
 });
 
 router.get('/google/callback', async (req, res) => {
-	const code = req.query.code;
+	const { code, state } = req.query;
+
+	// 1) CSRF protection: check state
+	if (!state || state !== req.session.google_oauth_state) {
+		return res.status(400).send('Invalid state');
+	}
+
+	if (!code) {
+		return res.redirect('/');
+	}
+
 	if (code) {
 		try {
+			// 2) Exchange code for tokens
 			const { tokens } = await googleOAuth2Client.getToken(code);
 			googleOAuth2Client.setCredentials(tokens);
 
-			// Get user info from Google
+			// 3) Verify ID token, including nonce + get user info
 			const ticket = await googleOAuth2Client.verifyIdToken({
 				idToken: tokens.id_token,
-				audience: process.env.GOOGLE_AUTH_CLIENT_ID,
+				audience: config.get('auth.google.client_id'),
 			});
 			const payload = ticket.getPayload();
 
+			// 4) Replay protection: check nonce from ID token
+			if (!payload || payload.nonce !== req.session.google_oauth_nonce) {
+				return res.status(400).send('Invalid nonce');
+			}
+
+			// clear state and nonce after successful checks
+			req.session.google_oauth_state = undefined;
+			req.session.google_oauth_nonce = undefined;
+
 			// mimic twitch shape
-			const login = ULID.ulid().toLowerCase();
+			const login = ulid().toLowerCase();
 			const user_object = {
 				id: payload.sub,
-				secret: ULID.ulid(),
+				secret: ulid(),
 				type: '',
 				description: '',
 				login,
@@ -322,8 +356,16 @@ router.get('/discord/callback', async (req, res) => {
 		const { body: token } = await got.post(
 			'https://discord.com/api/oauth2/token',
 			{
-				username: process.env.DISCORD_CLIENT_ID,
-				password: process.env.DISCORD_CLIENT_SECRET,
+				headers: {
+					'Authorization':
+						'Basic ' +
+						Buffer.from(
+							`${config.get('auth.discord.client_id')}:${config.get(
+								'auth.discord.client_secret'
+							)}`
+						).toString('base64'),
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
 				form: {
 					code: req.query.code,
 					grant_type: 'authorization_code',
@@ -353,7 +395,7 @@ router.get('/discord/callback', async (req, res) => {
 		// transform discord response into twitch-like user object
 		user_object.profile_image_url = `https://cdn.discordapp.com/avatars/${user_object.id}/${user_object.avatar}?size=512`;
 		user_object.login = user_object.username;
-		user_object.secret = ULID.ulid();
+		user_object.secret = ulid();
 		user_object.type = '';
 		user_object.display_name = user_object.global_name;
 
@@ -398,7 +440,7 @@ router.get('/discord/callback', async (req, res) => {
 		res
 			.status(500)
 			.send(
-				`An unexpected error occured with your Twich login: ${err.message}. Please try again later`
+				`An unexpected error occured with your Discord login: ${err.message}. Please try again later.`
 			);
 	}
 });
@@ -441,19 +483,19 @@ router.get(
 		// sanity check before deleting
 		const identities = await UserDAO.getIdentities(req.session.user.id);
 		const identity = identities.find(
-			identity => (identity.id = req.params.identity_id)
+			identity => identity.id === req.params.identity_id
 		);
 
 		// we only accept to remove an identity if it's not the last one
 		if (identity && identities.length > 1) {
-			const res = await UserDAO.removeIdentity(
+			const removed = await UserDAO.removeIdentity(
 				req.session.user.id,
 				identity.id
 			);
 
 			const new_token = { ...req.session.token };
 
-			delete new_token[res.provider]; // we clear the identity tokens from the session
+			delete new_token[removed.provider]; // we clear the identity tokens from the session
 
 			req.session.token = new_token;
 		}

@@ -3,6 +3,7 @@ import layouts from '../modules/layouts.js';
 import UserDAO from '../daos/UserDAO.js';
 import Replay from '../domains/Replay.js';
 import Connection from '../modules/Connection.js';
+import config from '../modules/config.js';
 
 function passThrough(cb) {
 	cb();
@@ -16,7 +17,7 @@ export default function init(server, wss) {
 		request.nc_url = new URL(request.url, 'ws://nestrischamps.io');
 
 		let m = request.nc_url.pathname.match(
-			/^\/ws\/replay\/([a-z0-9_-]+)\/((\d+)(-(\d+)){0,7})/
+			/^\/ws\/replay\/([a-z0-9_-]+)\/((\d+)(-(\d+)){0,11})/
 		);
 
 		if (m) {
@@ -110,7 +111,7 @@ export default function init(server, wss) {
 		}
 
 		m = request.nc_url.pathname.match(
-			/^\/ws\/room\/(u\/([a-z0-9_-]+)\/)?producer\/([a-zA-Z0-9-]+)/
+			/^\/ws\/room\/(u\/([a-z0-9_-]+)\/)?(producer[12]?|emu)\/([a-zA-Z0-9-]+)/
 		);
 
 		request.is_secret_producer = !!m;
@@ -122,7 +123,7 @@ export default function init(server, wss) {
 
 			request.tetris.producer = {
 				target_user_login: m[2],
-				connecting_user_secret: m[3],
+				connecting_user_secret: m[4],
 			};
 
 			const connecting_user = await UserDAO.getUserBySecret(
@@ -167,7 +168,7 @@ export default function init(server, wss) {
 			return;
 		}
 
-		if (process.env.IS_PUBLIC_SERVER !== '1') {
+		if (!config.get('server.is_public')) {
 			m = request.nc_url.pathname.match(/^\/ws\/room\/admin\/([a-zA-Z0-9-]+)/);
 
 			request.is_secret_admin = !!m;
@@ -294,21 +295,27 @@ export default function init(server, wss) {
 				user.setProducerConnection(connection, {
 					match: true,
 					target_user,
+					remote_calibration:
+						request.nc_url.searchParams.get('_remote_calibration') === '1',
 				});
 			} else {
 				user.setProducerConnection(connection, {
 					match: false,
 					competition: request.nc_url.searchParams.get('competition') === '1',
+					remote_calibration:
+						request.nc_url.searchParams.get('_remote_calibration') === '1',
 				});
 			}
 		} else if (pathname.startsWith('/ws/room/admin')) {
 			console.log(`MatchRoom: ${user.login}: Admin connected`);
 			user.getHostRoom().setAdmin(connection);
-		} else if (/^\/ws\/room\/(producer|emu)/.test(pathname)) {
+		} else if (/^\/ws\/room\/(producer[12]?|emu)/.test(pathname)) {
 			console.log(`PrivateRoom: ${user.login}: Producer connected`);
 			user.setProducerConnection(connection, {
 				match: false,
 				competition: request.nc_url.searchParams.get('competition') === '1',
+				remote_calibration:
+					request.nc_url.searchParams.get('_remote_calibration') === '1',
 			});
 		} else if ((m = pathname.match(/^\/ws\/room\/u\/([a-z0-9_-]+)\//))) {
 			const target_user = await UserDAO.getUserByLogin(m[1]);
@@ -342,6 +349,8 @@ export default function init(server, wss) {
 				}
 				/** */
 
+				case 'producer1':
+				case 'producer2':
 				case 'producer':
 				case 'emu': {
 					console.log(
@@ -350,6 +359,8 @@ export default function init(server, wss) {
 					user.setProducerConnection(connection, {
 						match: true,
 						target_user,
+						remote_calibration:
+							request.nc_url.searchParams.get('_remote_calibration') === '1',
 					});
 					break;
 				}

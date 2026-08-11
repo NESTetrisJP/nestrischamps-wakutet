@@ -25,7 +25,7 @@ export default class ArrayView {
 
 		try {
 			requested_index = parseInt(prop, 10);
-		} catch (err) {}
+		} catch (_err) {}
 
 		if (!isNaN(requested_index)) {
 			return this.at(requested_index);
@@ -61,7 +61,6 @@ export default class ArrayView {
 			case 'shift':
 			case 'unshift':
 			case 'fill':
-			case 'unshift':
 				throw new Error(
 					`Forbidden (${prop}): ArrayView instances are immutable`
 				);
@@ -70,7 +69,7 @@ export default class ArrayView {
 		throw new Error(`Error: Property not understood`, prop);
 	}
 
-	set(target, prop) {
+	set(_target, _prop) {
 		throw new Error('Forbidden: ArrayView instances are immutable');
 	}
 
@@ -109,9 +108,9 @@ export default class ArrayView {
 	every(cb, thisArg = null) {
 		for (let idx = 0; idx < this.length; idx++) {
 			if (thisArg) {
-				if (cb.call(thisArg, this.at(idx), idx, this._proxy)) return false;
+				if (!cb.call(thisArg, this.at(idx), idx, this._proxy)) return false;
 			} else {
-				if (cb(this.at(idx), idx, this._proxy)) return false;
+				if (!cb(this.at(idx), idx, this._proxy)) return false;
 			}
 		}
 
@@ -139,7 +138,7 @@ export default class ArrayView {
 	}
 
 	find(cb, thisArg = null) {
-		for (let idx = from_index; idx < this.length; idx++) {
+		for (let idx = 0; idx < this.length; idx++) {
 			if (thisArg) {
 				if (cb.call(thisArg, this.at(idx), idx, this._proxy))
 					return this.at(idx);
@@ -152,7 +151,7 @@ export default class ArrayView {
 	filter(cb, thisArg = null) {
 		const res = [];
 
-		for (let idx = from_index; idx < this.length; idx++) {
+		for (let idx = 0; idx < this.length; idx++) {
 			if (thisArg) {
 				if (cb.call(thisArg, this.at(idx), idx, this._proxy))
 					res.push(this.at(idx));

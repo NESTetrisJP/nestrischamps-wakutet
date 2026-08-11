@@ -147,4 +147,13 @@ export default class Board {
 
 		return false;
 	}
+
+	// returns a flatten field
+	getField() {
+		return this.rows.reduce((acc, row) => (acc.push(...row.cells), acc), []);
+	}
+
+	toString() {
+		return this.rows.map(row => row.cells.join('')).join('\n');
+	}
 }

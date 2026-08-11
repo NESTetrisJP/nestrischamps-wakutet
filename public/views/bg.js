@@ -4,13 +4,21 @@ import { shuffle } from '/views/utils.js';
 
 const parent = document.querySelector('#stream_bg');
 
+function getInterpolator(x0, v0, x1, v1) {
+	return function (x) {
+		return v0 + ((x - x0) * (v1 - v0)) / (x1 - x0);
+	};
+}
+
 if (QueryString.get('bg') === '0') {
+	// do nothing
 } else if (QueryString.get('bg') === '5') {
 	const bg = document.createElement('div');
 	parent.style.backgroundColor = 'black';
 	bg.classList.add('bg');
 
 	const bounds = parent.getBoundingClientRect();
+	console.log(bounds);
 
 	const spacer_w = 160;
 	const spacer_h = 40;
@@ -96,10 +104,6 @@ if (QueryString.get('bg') === '0') {
 
 	Object.assign(bg.style, {
 		position: 'absolute',
-		width: '119%',
-		height: '133%',
-		top: '-15%',
-		left: '-14%',
 		background: `url(/views/${bg_file}) 0 0 repeat`,
 		transform: 'rotate(-11deg)',
 	});
@@ -111,25 +115,35 @@ if (QueryString.get('bg') === '0') {
 		bg.style.backgroundPositionX = `${pos}px`;
 	}, 1000 / 30);
 
+	const interpolateTop = getInterpolator(568, -6, 4096, -32);
+	const interpolateHeight = getInterpolator(568, 110, 4096, 172);
+	const interpolateLeft = getInterpolator(568, -17, 4096, -13);
+	const interpolateWidth = getInterpolator(568, 135, 4096, 116);
+
+	const adjustSize = () => {
+		const bounds = parent.getBoundingClientRect();
+		const { width } = bounds;
+
+		Object.assign(bg.style, {
+			top: `${interpolateTop(width)}%`,
+			height: `${interpolateHeight(width)}%`,
+			left: `${interpolateLeft(width)}%`,
+			width: `${interpolateWidth(width)}%`,
+		});
+	};
+
+	adjustSize();
+
+	window.addEventListener('resize', adjustSize);
+
 	parent.prepend(bg);
 } else {
 	// bg=1 (default pieces)
-	const bounds = parent.getBoundingClientRect();
-
-	const width = bounds.width;
-	const height = bounds.height;
-
-	const border = 100;
-
+	const pieces = [];
 	const grid_x = 8;
 	const grid_y = 5;
-
-	const span_x = (width - border * 2) / (grid_x - 1);
-	const span_y = (height - border * 2) / (grid_y - 1);
-
+	const border = 100;
 	const spread = 1 / 3;
-
-	const pieces = [];
 
 	let num_bags = Math.ceil((grid_x * grid_y) / PIECES.length);
 
@@ -138,37 +152,55 @@ if (QueryString.get('bg') === '0') {
 	}
 
 	const bg = document.createElement('div');
-
 	bg.classList.add('bg');
 
-	for (let x = grid_x; x--; ) {
-		for (let y = grid_y; y--; ) {
-			const piece = pieces.pop();
-			const img = new Image();
+	const pieceImages = pieces.map(piece => {
+		const img = new Image();
+		img.src = `/views/bg_pieces/${piece}.png`;
 
-			img.src = `/views/bg_pieces/${piece}.png`;
+		Object.assign(img.style, {
+			position: 'absolute',
+			transform: `rotate(${90 * Math.floor(Math.random() * 4)}deg)`,
+		});
 
-			const pos_x = Math.round(
-				border / 2 + span_x * (x - spread + 2 * spread * Math.random())
-			);
-			const pos_y = Math.round(
-				border + span_y * (y - spread + 2 * spread * Math.random())
-			);
+		return img;
+	});
 
-			Object.assign(img.style, {
-				left: `${pos_x}px`,
-				top: `${pos_y}px`,
-				position: 'absolute',
-				transform: `rotate(${90 * Math.floor(Math.random() * 4)}deg)`,
-			});
+	const positionPieceImages = () => {
+		const bounds = parent.getBoundingClientRect();
+		const { width, height } = bounds;
+		const span_x = (width - border * 2) / (grid_x - 1);
+		const span_y = (height - border * 2) / (grid_y - 1);
 
-			bg.appendChild(img);
+		for (let x = grid_x; x--; ) {
+			for (let y = grid_y; y--; ) {
+				const imgIdx = y * grid_x + x;
+				const img = pieceImages[imgIdx];
+
+				const pos_x = Math.round(
+					border / 2 + span_x * (x - spread + 2 * spread * Math.random())
+				);
+				const pos_y = Math.round(
+					border + span_y * (y - spread + 2 * spread * Math.random())
+				);
+
+				Object.assign(img.style, {
+					left: `${pos_x}px`,
+					top: `${pos_y}px`,
+				});
+			}
 		}
-	}
+	};
+
+	positionPieceImages();
+
+	pieceImages.forEach(img => bg.appendChild(img));
 
 	parent.style.backgroundColor = 'black';
 
 	parent.prepend(bg);
+
+	window.addEventListener('resize', positionPieceImages);
 }
 
 export default {};

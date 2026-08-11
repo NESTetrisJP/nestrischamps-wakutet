@@ -8,7 +8,6 @@
  *   See https://github.com/eligrey/FileSaver.js/blob/master/LICENSE.md
  */
 
-/* eslint-disable */
 var saveAs =
 	saveAs ||
 	(function (c) {

@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import UserDAO from '../daos/UserDAO.js';
 import Room from './Room.js';
+import BinaryFrame from '../public/js/BinaryFrame.js';
 
 const PRODUCER_FIELDS = [
 	'id',
@@ -10,7 +11,7 @@ const PRODUCER_FIELDS = [
 	'country_code',
 	'vdo_ninja_url',
 ];
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 16;
 
 function getBasePlayerData() {
 	return {
@@ -25,6 +26,7 @@ function getBasePlayerData() {
 			mirror: 0, // horizontal mirror only (for now)
 			// can potentially add more here in term of xshift, yshift, zoomin, zoomout, etc...
 		},
+		remote_calibration: false,
 	};
 }
 
@@ -49,7 +51,7 @@ class MatchRoom extends Room {
 			],
 		};
 
-		this.onAdminMessage = this.onAdminMessage.bind(this);
+		this.handleAdminMessage = this.handleAdminMessage.bind(this);
 	}
 
 	setAdmin(connection) {
@@ -64,7 +66,7 @@ class MatchRoom extends Room {
 		}
 		this.admin = connection;
 
-		connection.on('message', this.onAdminMessage);
+		connection.on('message', this.handleAdminMessage);
 		connection.once('close', () => {
 			if (this.admin == connection) {
 				// only overwrite self (for potential race conditions)
@@ -83,7 +85,9 @@ class MatchRoom extends Room {
 	}
 
 	getProducerFields(user) {
-		return _.pick(user, PRODUCER_FIELDS);
+		const fields = _.pick(user, PRODUCER_FIELDS);
+		fields.remote_calibration = !!user.getProducer()?.remote_calibration;
+		return fields;
 	}
 
 	hasProducer(user) {
@@ -401,37 +405,46 @@ class MatchRoom extends Room {
 
 		this.assertValidPlayer(p_num);
 
-		const player_id = `${p_id}`;
+		const user_id = `${p_id}`;
 
-		if (!/^[1-9]\d*$/.test(player_id)) return;
+		if (!/^[1-9]\d*$/.test(user_id)) return;
 
-		const player_data = await UserDAO.getUserById(player_id, true);
+		const player = this.state.players[p_num];
+		const player_data = await UserDAO.getUserById(player.id);
+		const user_data = await UserDAO.getUserById(user_id, true);
 
-		this.state.players[p_num] = Object.assign(this.state.players[p_num], {
-			login: player_data.login,
-			display_name: player_data.display_name,
-			country_code: player_data.country_code,
+		Object.assign(player, {
+			login: user_data.login,
+			display_name: user_data.display_name,
+			country_code: user_data.country_code,
+			on_behalf_of_user: user_id,
 		});
 
-		this.sendToViews(['setLogin', p_num, player_data.login]);
-		this.sendToViews(['setDisplayName', p_num, player_data.display_name]);
-		this.sendToViews(['setCountryCode', p_num, player_data.country_code]);
+		// warning: this adds state to the global player object. As in, it reaches out of the matchroom and into the whole process
+		// it's dirty but sort of fine to do, since a user can only have a single producer at a time
+		player_data.on_behalf_of_user = {
+			id: user_id,
+			display_name: user_data.display_name,
+		};
+
+		this.sendToViews(['setLogin', p_num, user_data.login]);
+		this.sendToViews(['setDisplayName', p_num, user_data.display_name]);
+		this.sendToViews(['setCountryCode', p_num, user_data.country_code]);
 
 		// only update the avatar if supplied
-		if (!/^\s*$/.test(player_data.profile_image_url)) {
-			this.state.players[p_num].profile_image_url =
-				player_data.profile_image_url;
+		if (!/^\s*$/.test(user_data.profile_image_url)) {
+			this.state.players[p_num].profile_image_url = user_data.profile_image_url;
 
 			this.sendToViews([
 				'setProfileImageURL',
 				p_num,
-				player_data.profile_image_url,
+				user_data.profile_image_url,
 			]);
 		}
 	}
 
-	sendPlayerInfoToViews(pidx) {
-		const player = this.state.players[pidx];
+	sendPlayerInfoToViews(pidx, data = null) {
+		const player = data || this.state.players[pidx];
 
 		this.sendToViews(['setId', pidx, player.id]); // resets the player and game in frontend
 		this.sendToViews(['setLogin', pidx, player.login]);
@@ -442,7 +455,7 @@ class MatchRoom extends Room {
 		this.sendToViews(['setVdoNinjaURL', pidx, player.vdo_ninja_url]);
 	}
 
-	async onAdminMessage(message) {
+	async handleAdminMessage(message) {
 		const [command, ...args] = message;
 		let forward_to_views = true;
 		let update_admin = true;
@@ -485,6 +498,22 @@ class MatchRoom extends Room {
 						producer.send(['setViewPeerId', this.last_view.id]);
 						producer.send(['makePlayer', p_num, this.getViewMeta()]); // should reset camera!
 					}
+
+					break;
+				}
+
+				case 'requestRemoteCalibration': {
+					update_admin = false;
+					forward_to_views = false;
+
+					const [p_num, admin_peer_id] = args;
+
+					this.assertValidPlayer(p_num);
+
+					const player_id = this.state.players[p_num].id;
+					const user = this.getProducer(player_id);
+
+					user.getProducer()?.send(['requestRemoteCalibration', admin_peer_id]);
 
 					break;
 				}
@@ -544,11 +573,11 @@ class MatchRoom extends Room {
 				}
 
 				case 'setVictories': {
-					const [p_num, url] = args;
+					const [p_num, num_victories] = args;
 
 					this.assertValidPlayer(p_num);
 
-					this.state.players[p_num].victories = url;
+					this.state.players[p_num].victories = num_victories;
 
 					break;
 				}
@@ -602,7 +631,7 @@ class MatchRoom extends Room {
 						this.getProducer(dropped_player.id)
 							.getProducer()
 							.send(['dropPlayer']);
-					} catch (err) {
+					} catch (_err) {
 						// ignore errors
 					}
 
@@ -639,7 +668,10 @@ class MatchRoom extends Room {
 					// finally send dummy data to clear last player
 					// warning: this clears the player data, but it doens't cler the player object itself :(
 					// TODO: implement an actual removePlayer() API in views
-					updatePlayer(getBasePlayerData(), this.state.players.length);
+					this.sendPlayerInfoToViews(
+						this.state.players.length,
+						getBasePlayerData()
+					);
 
 					forward_to_views = false;
 					break;
@@ -690,11 +722,11 @@ class MatchRoom extends Room {
 
 		if (Array.isArray(message) && message[0] === 'setVdoNinjaURL') {
 			user.vdo_ninja_url = message[1];
-			this.state.players
-				.filter(p => p.id === user.id)
-				.forEach(p => {
-					p.vdo_ninja_url = message[1];
-				});
+			this.state.players.forEach((p, p_idx) => {
+				if (p.id !== user.id) return;
+				p.vdo_ninja_url = user.vdo_ninja_url;
+				this.tellAdmin(['setVdoNinjaURL', p_idx, user.vdo_ninja_url]);
+			});
 		}
 
 		this.state.players.forEach((player, p_idx) => {
@@ -708,14 +740,14 @@ class MatchRoom extends Room {
 					// we make a copy to ensure each player gets its own message
 					message = new Uint8Array(message);
 				}
-				message[0] = (message[0] & 0b11111000) | p_idx; // sets player number in header byte of binary message
-				this.sendToViews(message);
+				BinaryFrame.setPlayerIndex(message, p_idx);
+				this.sendGameFrameToViews(message);
 			} else if (Array.isArray(message)) {
 				this.sendToViews([message[0], p_idx, ...message.slice(1)]);
 				// TODO: send message to admin page as well?
 			} else {
 				// assume frame
-				this.sendToViews(['frame', p_idx, message]);
+				this.sendGameFrameToViews(['frame', p_idx, message]);
 			}
 		});
 	}

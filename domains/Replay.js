@@ -4,11 +4,12 @@ import fs from 'fs';
 
 import BinaryFrame from '../public/js/BinaryFrame.js';
 import ScoreDAO from '../daos/ScoreDAO.js';
+import config from '../modules/config.js';
 
 class Replay {
-	constructor(connection, player_num, game_id_or_url, time_scale = 1) {
+	constructor(connection, player_idx, game_id_or_url, time_scale = 1) {
 		this.connection = connection;
-		this.player_num = player_num;
+		this.player_idx = player_idx;
 		this.game_id_or_url = game_id_or_url;
 		this.time_scale = time_scale;
 		this.frame_buffer = [];
@@ -48,29 +49,31 @@ class Replay {
 			// For attribution!
 			this.connection.send([
 				'setLogin',
-				this.player_num,
-				score_data.login || `Player ${this.player_num + 1}`,
+				this.player_idx,
+				score_data.login || `Player ${this.player_idx + 1}`,
 			]);
 			this.connection.send([
 				'setDisplayName',
-				this.player_num,
-				score_data.display_name || `Player ${this.player_num + 1}`,
+				this.player_idx,
+				score_data.display_name || `Player ${this.player_idx + 1}`,
 			]);
 			this.connection.send([
 				'setProfileImageURL',
-				this.player_num,
+				this.player_idx,
 				score_data.profile_image_url,
 			]);
 			this.connection.send([
 				'setCountryCode',
-				this.player_num,
+				this.player_idx,
 				score_data.country_code,
 			]);
 
-			if (process.env.GAME_FRAMES_BUCKET) {
+			if (config.get('game.frames_bucket')) {
 				// data comes from S3
 				//https://nestrischamps.s3-us-west-1.amazonaws.com/
-				const base_url = `https://${process.env.GAME_FRAMES_BUCKET}.s3-${process.env.GAME_FRAMES_REGION}.amazonaws.com/`;
+				const base_url = `https://${config.get(
+					'game.frames_bucket'
+				)}.s3-${config.get('game.frames_region')}.amazonaws.com/`;
 
 				this.game_stream = got.stream(`${base_url}${file_path}`);
 			} else {
@@ -99,20 +102,20 @@ class Replay {
 					}
 
 					const b = new Uint8Array(buf);
-					const version = b[0] >> 5 || 1;
+					const frame_size = BinaryFrame.getFrameSize(b);
 
-					if (BinaryFrame.FRAME_SIZE_BY_VERSION[version]) {
-						this.frame_size = BinaryFrame.FRAME_SIZE_BY_VERSION[version];
+					if (frame_size) {
+						this.frame_size = frame_size;
 						this.game_stream.unshift(buf);
-						console.info(
-							`Found version ${version} with size ${this.frame_size}`
-						);
+						console.info(`Found frame size ${this.frame_size}`);
 						continue;
 					} else {
 						// unknown version, do nothing
 						// is this a memory leak? 🤔
 						console.warn(
-							`warning: unknown version in replay file ${this.game_id_or_url}: ${version}`
+							`warning: unknown version in replay file ${
+								this.game_id_or_url
+							}: ${b[0].toString(2)}`
 						);
 						return;
 					}
@@ -130,8 +133,8 @@ class Replay {
 				}
 
 				if (!this.start_time) {
-					// Parsing the frame may not be needed just to get ctime
-					// but we should also check the version format
+					// Parsing the whole is not needed just to get ctime
+					// but we do it to nothandle another buffer to uint array conversion here 🤷
 
 					const data = BinaryFrame.parse(buf);
 
@@ -154,9 +157,18 @@ class Replay {
 		if (this.send_timeout) return;
 		if (this.frame_buffer.length <= 0) return;
 
-		const frame = new Uint8Array(this.frame_buffer.shift());
+		let frame = new Uint8Array(this.frame_buffer.shift());
 
-		frame[0] = (frame[0] & 0b11111000) | this.player_num;
+		if (this.player_idx >= 8 && BinaryFrame.getFrameVersion(frame) < 4) {
+			// the current frame version supports up to 8 players
+			// so if the replay is older than that and we're trying to replay for a higher player index
+			// we need to update the frame version
+			const data = BinaryFrame.parse(frame);
+
+			frame = BinaryFrame.encode(data);
+		}
+
+		BinaryFrame.setPlayerIndex(frame, this.player_idx);
 
 		const tdiff = Math.round(
 			(BinaryFrame.getCTime(frame) - this.start_ctime) / this.time_scale

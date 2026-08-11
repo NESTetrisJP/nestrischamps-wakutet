@@ -1,38 +1,4 @@
-const isLocalRpi = false;
-
-const defaultPeerjsOptions = {
-	host: '0.peerjs.com',
-	path: '/',
-	port: 443,
-	secure: true,
-	config: {
-		iceServers: [
-			{ url: 'stun:freeturn.net:3478' },
-			{ url: 'turn:freeturn.net:3478', username: 'free', credential: 'free' },
-		],
-	},
-};
-
-const rpiPeerjsOptions = {
-	host: 'nestrischamps.local',
-	path: '/',
-	port: 9000,
-	secure: true,
-	config: {
-		iceServers: [
-			{ url: 'stun:nestrischamps.local:3478' },
-			{
-				url: 'turn:nestrischamps.local:3478',
-				username: 'ntc',
-				credential: 'ntc',
-			},
-		],
-	},
-};
-
-export const peerServerOptions = isLocalRpi
-	? rpiPeerjsOptions
-	: defaultPeerjsOptions;
+export { peerServerOptions } from '/js/peerjsOptions.js';
 
 export const DOM_DEV_NULL =
 	(typeof document !== 'undefined' && document.createElement('div')) || {};
@@ -243,7 +209,7 @@ export function getRunway(start_level, type, lines) {
 
 	try {
 		return targetRunways[type][lines] || 0;
-	} catch (err) {
+	} catch (_err) {
 		console.warn(`Runway unavailable ${[start_level, type, lines]}`);
 		return 0;
 	}

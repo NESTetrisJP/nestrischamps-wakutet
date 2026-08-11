@@ -1,3 +1,5 @@
+/* global onFrame */
+
 let timeline_idx = 0;
 
 function splitField(field) {

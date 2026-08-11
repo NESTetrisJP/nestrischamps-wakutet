@@ -13,6 +13,7 @@ process.on('uncaughtException', (error, origin) => {
 
 const app = express();
 
+app.disable('x-powered-by');
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1); // trust first proxy (i.e. heroku) -- needed to get req.protocol correctly
 
@@ -40,6 +41,15 @@ app.use((req, res, next) => {
 	next();
 });
 
+// app-level middleware to block .php and wordpress requests BEFORE static and session middlewares run
+// because I'm seeing lots of annoying kiddy-scans, which still hammer the DB with session checks -_-
+app.use((req, res, next) => {
+	if (/\/wp-|\.php7?$/i.test(req.path)) {
+		return res.status(404).send('Not Found');
+	}
+	next();
+});
+
 app.use(express.static('public'));
 app.use(middlewares.sessionMiddleware);
 
@@ -52,7 +62,7 @@ app.use((req, res, next) => {
 		// We prep for when user might login
 
 		if (req.originalUrl) {
-			if (!/^\/(auth|favicon|android|apple|site)/.test(req.originalUrl)) {
+			if (!/^\/(api|auth|favicon|android|apple|site)/.test(req.originalUrl)) {
 				console.log('Storing auth_success_redirect', req.originalUrl);
 				req.session.auth_success_redirect = req.originalUrl;
 			}
@@ -66,12 +76,14 @@ import authRoutes from '../routes/auth.js';
 import apiRoutes from '../routes/api.js';
 import scoreRoutes from '../routes/score.js';
 import settingsRoute from '../routes/settings.js';
+import systemRoute from '../routes/system.js';
 import defaultRoutes from '../routes/routes.js';
 
 app.use('/auth', authRoutes);
 app.use('/api', apiRoutes);
 app.use('/stats', scoreRoutes);
 app.use('/settings', settingsRoute);
+app.use('/system', systemRoute);
 app.use('', defaultRoutes);
 
 export default app;

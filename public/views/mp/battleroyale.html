@@ -17,6 +17,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<div id="stream_bg">
 			<div class="box leaderboard">
@@ -61,7 +62,7 @@
 				players: 8,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import QueryString from '/js/QueryString.js';
@@ -138,6 +139,10 @@
 						player_node.classList.add(`p${player_idx + 1}`);
 						stream_bg.appendChild(player_node);
 
+						if (QueryString.get('rtrt') === '0') {
+							player_node.querySelector(`.running_trt`).remove();
+						}
+
 						const rank_fragment = document.importNode(
 							rank_template.content,
 							true
@@ -155,7 +160,6 @@
 								video: player_node.querySelector(`video`),
 							},
 							{
-								field_pixel_size: 2.5,
 								preview_pixel_size: 2,
 								preview_align: 'tr',
 								stereo: translate([0, num_players - 1], [-1, 1], player_idx),
@@ -192,10 +196,6 @@
 								spacer + player_idx * (player_width + spacer)
 							)}px`,
 						});
-
-						if (QueryString.get('rtrt') === '0') {
-							player.dom.running_trt.remove();
-						}
 					});
 
 				const competition = new Competition(players);

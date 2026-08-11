@@ -8,7 +8,7 @@ function fieldToBoard(field) {
 		.fill()
 		.map((v, i) => field.slice(i * 10, i * 10 + 10));
 
-	rows.num_block = field.reduce((acc, v) => (acc += v ? 1 : 0), 0);
+	rows.num_block = field.reduce((acc, v) => acc + (v ? 1 : 0), 0);
 
 	// console.log(rows.num_block);
 
@@ -87,7 +87,7 @@ function isSecondFrameOfDoubleClearAnimation(board) {
 		if (isRowEmpty(row)) {
 			continue;
 		} else if (isRowPotentiallySecondFrameOfDoubleClearAnimation(row)) {
-			return isRowPotentiallySecondFrameOfDoubleClearAnimation(board[++ridx]);
+			return isRowPotentiallySecondFrameOfDoubleClearAnimation(board[ridx + 1]);
 		}
 
 		break;

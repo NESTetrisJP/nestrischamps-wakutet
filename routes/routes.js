@@ -6,10 +6,9 @@ import { countries } from '../modules/countries.js';
 import layouts from '../modules/layouts.js';
 import UserDAO from '../daos/UserDAO.js';
 import ScoreDAO from '../daos/ScoreDAO.js';
+import config from '../modules/config.js';
 
-import { readableScoreFomatter } from '../public/views/utils.js';
-
-const router = express.Router();
+const router = express.Router({ caseSensitive: true });
 
 router.get('/debug/session', (req, res) => {
 	res.send(JSON.stringify(req.session));
@@ -34,7 +33,7 @@ router.get(
 	async (req, res) => {
 		const data = { countries };
 
-		if (process.env.IS_PUBLIC_SERVER === '1') {
+		if (config.get('server.is_public')) {
 			data.users = null;
 		} else {
 			data.users = await UserDAO.getAssignableUsers();
@@ -73,25 +72,57 @@ router.get(
 );
 /**/
 
+router.get(/^\/remote_calibration/, (req, res) => {
+	res.sendFile(
+		path.join(path.resolve(), `public/producer/remote_calibration.html`)
+	);
+});
+
 router.get(
-	/^\/room\/(producer|emu)/,
+	/^\/room\/(producer1?|emu)/,
 	middlewares.assertSession,
 	middlewares.checkToken,
 	(req, res) => {
-		req.originalUrl;
-		res.sendFile(
-			path.join(
-				path.resolve(),
-				`public${
-					/producer/.test(req.path) ? '/ocr/ocr.html' : '/emu/index.html'
-				}`
-			)
-		);
+		console.log('/room/producer');
+		const tplPath = /producer/.test(req.path)
+			? '/producer/index.html'
+			: '/emu/index.html';
+
+		res.sendFile(path.join(path.resolve(), `public${tplPath}`));
+	}
+);
+
+// access producer by url secret
+// is this route needed? websocket yes, but producer page?
+router.get(
+	/^\/room\/u\/([^/]+)\/(producer1?|emu)\/([a-zA-Z0-9-]+)/,
+	async (req, res) => {
+		const host_user = await UserDAO.getUserByLogin(req.params[0]);
+
+		if (!host_user) {
+			res.status(404).send('Target User Not found');
+			return;
+		}
+
+		const player = await UserDAO.getUserBySecret(req.params[2]);
+
+		if (!player) {
+			res.status(400).send('Player Not found');
+			return;
+		}
+
+		const tplPath = /producer/.test(req.path)
+			? '/producer/index.html'
+			: '/emu/index.html';
+
+		console.log([req.path, tplPath]);
+
+		res.sendFile(path.join(path.resolve(), `public${tplPath}`));
 	}
 );
 
 router.get(
-	/^\/room\/u\/([^/]+)\/(producer|emu)/,
+	/^\/room\/u\/([^/]+)\/(producer1?|emu)/,
 	middlewares.assertSession,
 	middlewares.checkToken,
 	async (req, res) => {
@@ -102,18 +133,14 @@ router.get(
 			return;
 		}
 
-		res.sendFile(
-			path.join(
-				path.resolve(),
-				`public${
-					/producer/.test(req.path) ? '/ocr/ocr.html' : '/emu/index.html'
-				}`
-			)
-		);
+		const tplPath = /producer/.test(req.path)
+			? '/producer/index.html'
+			: '/emu/index.html';
+
+		res.sendFile(path.join(path.resolve(), `public${tplPath}`));
 	}
 );
 
-// This route should only be allowed by admin for non-owner
 router.get(
 	'/room/u/:login/view/:layout',
 	middlewares.assertSession,
@@ -126,6 +153,27 @@ router.get(
 			return;
 		}
 
+		const layout = layouts[req.params.layout];
+
+		if (!layout) {
+			res.status(404).send('Layout Not found');
+			return;
+		}
+
+		res.sendFile(
+			path.join(
+				path.resolve(),
+				`public/views/${layout.type}/${layout.file}.html`
+			)
+		);
+	}
+);
+
+router.get(
+	'/room/view/:layout',
+	middlewares.assertSession,
+	middlewares.checkToken,
+	async (req, res) => {
 		const layout = layouts[req.params.layout];
 
 		if (!layout) {
@@ -169,6 +217,14 @@ function getAge(dob) {
 	return age;
 }
 
+function mapObject(obj, fn) {
+	return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v)]));
+}
+
+const usNumFormatter = new Intl.NumberFormat('en-US', {
+	maximumFractionDigits: 0,
+});
+
 router.get('/view/profile_card/:login', async (req, res) => {
 	const user = await UserDAO.getUserByLogin(req.params.login, true);
 
@@ -177,11 +233,13 @@ router.get('/view/profile_card/:login', async (req, res) => {
 		return;
 	}
 
+	const pbs = await ScoreDAO.getPBs181929(user);
+
 	res.render('profile_card', {
 		user,
 		age: user.dob ? getAge(user.dob) : 9, // 😅
-		pb: readableScoreFomatter(await ScoreDAO.getPB(user)),
-		elo_rating: readableScoreFomatter(Math.floor(user.elo_rating)),
+		pbs: mapObject(pbs, v => (v ? usNumFormatter.format(v) : 0)),
+		elo_rating: usNumFormatter.format(Math.floor(user.elo_rating)),
 	});
 });
 

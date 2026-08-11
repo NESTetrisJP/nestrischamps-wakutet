@@ -1,4 +1,5 @@
 CREATE TYPE play_style AS ENUM ('das', 'tap', 'roll', 'hybrid');
+CREATE TYPE controller_type AS ENUM ('nes', 'goofy-foot', 'hyperkin-cadet', 'keyboard', 'other');
 CREATE TYPE identity_provider AS ENUM ('google', 'twitch', 'github', 'discord', 'facebook', 'slack');
 
 CREATE TABLE users (
@@ -9,15 +10,20 @@ CREATE TABLE users (
 	type VARCHAR ( 128 ),
 	description TEXT,
 	display_name VARCHAR ( 255 ),
+	full_name VARCHAR ( 255 ),
 	pronouns VARCHAR ( 128 ),
 	profile_image_url VARCHAR ( 255 ),
 
 	dob date,
 	country_code VARCHAR( 2 ),
 	city VARCHAR( 100 ),
-	interests VARCHAR ( 300 ) default '',
-	style play_style default 'das',
 	timezone TEXT NOT NULL CHECK (now() AT TIME ZONE timezone IS NOT NULL) DEFAULT 'UTC',
+	interests VARCHAR ( 300 ) default '',
+
+	style play_style default 'das',
+	controller controller_type default 'nes',
+	rival VARCHAR ( 128 ) default '',
+	rival_reason VARCHAR ( 300 ) default '',
 
 	elo_rank INTEGER NOT NULL DEFAULT 0,
 	elo_rating DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -63,6 +69,29 @@ CREATE INDEX IDX_scores_player_session ON scores (player_id, session);
 CREATE INDEX IDX_scores_player_level ON scores (player_id, start_level);
 CREATE INDEX IDX_scores_player_datetime ON scores (player_id, datetime);
 CREATE INDEX IDX_scores_datetime ON scores (datetime);
+
+create table qual_scores (
+	datetime timestamptz NOT NULL DEFAULT NOW(),
+	event VARCHAR ( 255 ) NOT NULL,
+
+	player_id BIGINT NOT NULL,
+	score_id BIGINT NOT NULL,
+
+	on_behalf_of_user_id BIGINT NOT NULL,
+	display_name VARCHAR ( 255 ),
+
+	CONSTRAINT fk_player
+		FOREIGN KEY(player_id)
+			REFERENCES users(id)
+				ON DELETE CASCADE ON UPDATE CASCADE,
+
+	CONSTRAINT fk_score
+		FOREIGN KEY(score_id)
+			REFERENCES scores(id)
+				ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IDX_qual_scores_event on qual_scores (event);
 
 CREATE TABLE user_identities (
     id BIGSERIAL PRIMARY KEY,

@@ -8,6 +8,12 @@
 	src: url('/fonts/prstartk_nes_tetris_8.ttf');
 }
 
+body {
+	--border-size: 15;
+	/* should rename to box-border-size */
+	--tdiff-anim: 0.2s ease-out;
+}
+
 html,
 body,
 table,
@@ -44,7 +50,6 @@ td {
 	text-align: center;
 
 	/* css magic to handle borders 💪 */
-	--border-size: 15;
 	border: solid calc(var(--border-size) * 1px) transparent;
 	border-image-source: url('/views/border_3px.png');
 	border-image-slice: var(--border-size) var(--border-size) var(--border-size)
@@ -64,6 +69,7 @@ td {
 	from {
 		opacity: 0;
 	}
+
 	to {
 		opacity: 1;
 	}
@@ -73,6 +79,7 @@ td {
 	from {
 		opacity: 1;
 	}
+
 	to {
 		opacity: 0;
 	}
@@ -84,6 +91,7 @@ td {
 		opacity: 1;
 		filter: brightness(1) blur(0px);
 	}
+
 	to {
 		visibility: hidden;
 		opacity: 0;

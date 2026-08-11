@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM node:18-alpine
-RUN apk add git
-RUN git clone https://github.com/timotheeg/nestrischamps.git
+FROM node:22-bullseye
+RUN apt-get update
+RUN apt-get install -y git
+RUN git clone https://github.com/nestrischamps/nestrischamps.git
 WORKDIR ./nestrischamps
 COPY *.pem ./
 ARG HTTPS

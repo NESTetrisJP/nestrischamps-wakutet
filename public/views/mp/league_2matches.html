@@ -60,13 +60,13 @@
 			}
 
 			.score .aligner .diff {
-				animation: 0.5s ease-out fadeIn;
+				animation: var(--tdiff-anim) fadeIn;
 				opacity: 1;
 			}
 
 			.score .tetris_diff {
 				margin-top: -32px;
-				animation: 0.5s ease-out fadeOut;
+				animation: var(--tdiff-anim) fadeOut;
 				opacity: 0;
 			}
 
@@ -75,12 +75,12 @@
 			}
 
 			.score.with_tdiff .tetris_diff {
-				animation: 0.5s ease-out fadeIn;
+				animation: var(--tdiff-anim) fadeIn;
 				opacity: 1;
 			}
 
 			.score.with_tdiff .aligner .diff {
-				animation: 0.5s ease-out fadeOut;
+				animation: var(--tdiff-anim) fadeOut;
 				opacity: 0;
 			}
 
@@ -121,7 +121,8 @@
 			.name {
 				top: 938px;
 				width: 334px;
-				font-size: 28.01px; /* sad -_- */
+				font-size: 28.01px;
+				/* sad -_- */
 				line-height: 36px;
 				padding: 8px 0 4px 2px;
 				white-space: nowrap;
@@ -186,7 +187,8 @@
 			}
 
 			.drought .header {
-				padding-bottom: 4px; /* because the bar is thinner than text */
+				padding-bottom: 4px;
+				/* because the bar is thinner than text */
 			}
 
 			.drought .header img {
@@ -232,8 +234,10 @@
 			}
 
 			.match.small {
-				transform: scale(0.7245042492917847); /* (1080-57)/706/2 */
+				transform: scale(0.7245042492917847);
+				/* (1080-57)/706/2 */
 			}
+
 			#match2.small {
 				top: 511px;
 			}
@@ -286,19 +290,23 @@
 				top: 0;
 				z-index: 8;
 			}
+
 			.match.small .score {
 				z-index: 7;
 			}
+
 			.match.small .hearts {
 				bottom: unset;
 				top: 465px;
 			}
+
 			.match.small .name {
 				z-index: 6;
 				top: 0;
 				width: 608px;
 				--offset: 683px;
 			}
+
 			.match.small .player_vid {
 				top: 75px;
 				width: 965px;
@@ -315,6 +323,7 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<template id="player">
 			<div class="player">
@@ -330,7 +339,7 @@
 						<div class="diff winning">0&#x202F;000&#x202F;000</div>
 					</div>
 					<div class="tetris_diff">
-						<span class="value">0.00</span><span class="label">Tetrises</span>
+						<span class="value">0.00</span><span class="label">Tetris</span>
 					</div>
 				</div>
 
@@ -390,7 +399,7 @@
 				players: 4,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { peerServerOptions } from '/views/constants.js';
@@ -399,28 +408,7 @@
 			import CompetitionPlayer from '/views/CompetitionPlayer.js';
 			import Competition from '/views/competition.js';
 			import InvisibleMixin from '/views/InvisibleMixin.js';
-
-			// Penner easing
-			// http://robertpenner.com/easing/
-			function easeOutElastic(t, b, c, d) {
-				var s = 1.70158;
-				var p = 0;
-				var a = c;
-				if (t == 0) return b;
-				if ((t /= d) >= 1) return b + c;
-				if (!p) p = d * 0.3;
-				if (a < Math.abs(c)) {
-					a = c;
-					var s = p / 4;
-				} else var s = (p / (2 * Math.PI)) * Math.asin(c / a);
-				return (
-					a *
-						Math.pow(2, -10 * t) *
-						Math.sin(((t * d - s) * (2 * Math.PI)) / p) +
-					c +
-					b
-				);
-			}
+			import { easeOutElastic } from '/js/anim.js';
 
 			const SHOW_SIMUL_TETRIS = /^[1-9]\d*$/.test(QueryString.get('simultris'));
 			const SIMUL_TETRIS_DELAY = SHOW_SIMUL_TETRIS
@@ -474,7 +462,6 @@
 							simul_tetris: player_node.querySelector(`.simul-tetris`),
 						},
 						{
-							field_pixel_size: 4.25,
 							running_trt_dot_size: 5,
 							preview_pixel_size: 3.75,
 							format_score: v => readableScoreFomatter(v),

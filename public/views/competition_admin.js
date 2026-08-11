@@ -1,5 +1,11 @@
 import Connection from '/js/connection.js';
 
+import { peerServerOptions } from '/views/constants.js';
+
+import { getSerializableConfigCopy } from '/producer/ConfigUtils.js';
+import { CaptureDriver } from '/producer/CaptureDriver.js';
+import { createOCRInstance } from '/producer/ocrStrategy.js';
+
 const dom = {
 	roomid: document.querySelector('#roomid'),
 	producer_count: document.querySelector('#producer_count'),
@@ -18,15 +24,16 @@ const dom = {
 	show_profile_cards_controls: document.querySelector(
 		'#show_profile_cards_controls'
 	),
+	hide_all_profile_cards: document.querySelector('#hide_all_profile_cards'),
 	allow_autojoin: document.querySelector('#allow_autojoin'),
 	add_player: document.querySelector('#add_player'),
 	curtain_logo_url: document.querySelector('#curtain_logo_url'),
 };
 
-const MAX_BEST_OF = 13;
+const MAX_BEST_OF = 19;
 
 const apiHandler = {
-	get(target, prop, receiver) {
+	get(_target, prop, _receiver) {
 		return function (...args) {
 			connection && connection.send([prop, ...args]);
 		};
@@ -48,6 +55,8 @@ class Player {
 		this.dom = dom;
 
 		this.setIndex(idx);
+
+		this.dom.remote_calibration_btn.style.display = 'none';
 
 		this.victories = 0;
 		this.bestof = -1;
@@ -85,6 +94,71 @@ class Player {
 			};
 		}
 
+		let copying = false;
+		this.dom.vdo_ninja_url.querySelector('svg.action.clipboard-copy').onclick =
+			async () => {
+				if (copying) return;
+				copying = true;
+
+				const icon = this.dom.vdo_ninja_url.querySelector(
+					'svg.action.clipboard-copy'
+				);
+
+				[...this.dom.vdo_ninja_url.querySelectorAll('svg.result')].forEach(
+					icon => (icon.style.display = 'none')
+				);
+
+				try {
+					await navigator.clipboard.writeText(
+						this.dom.vdo_ninja_url.querySelector('a').href
+					);
+					icon.style.display = 'none';
+					this.dom.vdo_ninja_url.querySelector('svg.success').style.display =
+						'inline';
+				} catch (_err) {
+					icon.display = 'none';
+					this.dom.vdo_ninja_url.querySelector('svg.failure').style.display =
+						'inline';
+					console.error('Unable to write to clipboard');
+				}
+
+				setTimeout(() => {
+					[...this.dom.vdo_ninja_url.querySelectorAll('svg.result')].forEach(
+						icon => (icon.style.display = 'none')
+					);
+					icon.style.display = 'inline';
+					copying = false;
+				}, 650);
+			};
+
+		let playing;
+		this.dom.vdo_ninja_url.querySelector('svg.action.vdo-play').onclick =
+			async () => {
+				if (playing) return;
+				playing = true;
+
+				const icon = this.dom.vdo_ninja_url.querySelector(
+					'svg.action.vdo-play'
+				);
+
+				icon.style.display = 'none';
+
+				const iframe = document.createElement('iframe');
+				iframe.setAttribute(
+					'allow',
+					'autoplay;camera;microphone;fullscreen;picture-in-picture;display-capture;midi;geolocation;gyroscope;'
+				);
+				iframe.src = this.dom.vdo_ninja_url.querySelector('a').href;
+
+				this.dom.images.append(iframe);
+
+				setTimeout(() => {
+					iframe.remove();
+					icon.style.display = 'inline';
+					playing = false;
+				}, 30000);
+			};
+
 		this.dom.win_btn.onclick = () => {
 			remoteAPI.setWinner(this.idx);
 		};
@@ -112,6 +186,214 @@ class Player {
 		this.dom.focus_player_btn.onclick = () => {
 			remoteAPI.focusPlayer(this.idx);
 		};
+
+		this.dom.remote_calibration_btn.onclick = async () => {
+			const remote_calibration_progress = document.querySelector(
+				'#remote_calibration_progress'
+			);
+
+			// replace button by brand new one to drop potential left over listeners
+			const oldCancelBtn = remote_calibration_progress.querySelector('button'); // only one button...
+			const newCancelBtn = oldCancelBtn.cloneNode(true); // true = copy children, but no listeners
+			oldCancelBtn.parentNode.replaceChild(newCancelBtn, oldCancelBtn);
+
+			remote_calibration_progress.showModal();
+
+			const progress = {
+				loadUI: { label: 'Loading configuration UI' },
+				connecting: { label: 'Connecting as Peer' },
+				requesting: { label: 'Requesting remote calibration call from player' },
+				waitingForFrame: { label: 'Waiting for first frame' },
+			};
+
+			function updateModal() {
+				remote_calibration_progress.querySelector('.messages').replaceChildren(
+					...Object.values(progress).map(({ label, status }) => {
+						const p = document.createElement('p');
+
+						if (status === undefined) p.classList.add('pending');
+
+						p.textContent = `${label}: ${status ? 'DONE' : '...'}`;
+						return p;
+					})
+				);
+			}
+
+			updateModal();
+
+			let overlay = document.createElement('iframe');
+
+			// Style it to cover 100% of the viewport
+			Object.assign(overlay.style, {
+				position: 'fixed',
+				top: '0',
+				left: '0',
+				width: '100vw',
+				height: '100vh',
+				backgroundColor: 'rgba(0, 0, 0, 0.8)', // example semi-transparent background
+				zIndex: '9999', // make sure it's on top
+				overflowY: 'auto', // adds scroll only when needed
+				overflowX: 'hidden', // optional: prevent horizontal scroll
+				margin: 0,
+				padding: 0,
+				border: 0,
+			});
+
+			overlay.src = '/remote_calibration';
+			document.body.appendChild(overlay);
+
+			overlay.addEventListener('load', () => {
+				progress.loadUI.status = true;
+				updateModal();
+
+				const clearPeer = () => {
+					if (!this.peer) return;
+					// this.peer.removeAllListeners();
+					this.peer.destroy();
+					this.peer = null;
+				};
+
+				const clearAll = () => {
+					// TODO destroy processingpipeline (driver + ocr + calibration_ui)
+					// overlay.removeAllListeners();
+					// closeOnly.removeAllListeners();
+					// saveAndClose.removeAllListeners();
+					remote_calibration_progress.close();
+					newCancelBtn.removeEventListener('click', clearAll);
+
+					overlay.remove();
+					overlay = null;
+					this.dataConnection = null;
+					if (driver) driver.destroy();
+					clearPeer();
+				};
+
+				newCancelBtn.addEventListener('click', clearAll);
+
+				const doc = overlay.contentDocument || overlay.contentWindow.document;
+				const closeOnly = doc.getElementById('close_only');
+				const saveAndClose = doc.getElementById('save_and_close');
+
+				// set up ui
+				doc.getElementById('name').innerText = this.dom.name.value;
+
+				const saveConfig = names => {
+					let config = getSerializableConfigCopy(
+						this.dataConnection.metadata.config
+					);
+
+					// cleanup to send just the crop
+					for (const [name, task] of Object.entries(config.tasks)) {
+						config.tasks[name] = { crop: task.crop };
+					}
+
+					if (names) {
+						// only send the config being changed
+						config = {
+							tasks: names.reduce((acc, name) => {
+								acc[name] = { crop: config.tasks[name].crop };
+								return acc;
+							}, {}),
+						};
+					}
+
+					this.dataConnection.send({ config });
+				};
+
+				closeOnly.addEventListener('click', clearAll);
+				saveAndClose.addEventListener('click', async () => {
+					saveConfig();
+					clearAll();
+				});
+
+				const calibration = doc.getElementById('calibration');
+
+				if (this.peer) {
+					clearPeer();
+				}
+
+				const peerid = `${connection.id}-${this.idx}`;
+				const peer = (this.peer = new Peer(peerid, peerServerOptions));
+
+				peer.on('error', err => {
+					console.error('Admin peer connection error:', err);
+				});
+
+				let driver;
+				let ocr;
+				let srcCanvas;
+				let srcCtx;
+
+				peer.on('connection', async dataConnection => {
+					progress.requesting.status = true;
+					updateModal();
+
+					console.log(
+						'Received peer connection call:',
+						dataConnection.metadata
+					);
+					this.dataConnection = dataConnection;
+
+					dataConnection.on('error', err => {
+						console.error('Admin data connection error:', err);
+					});
+
+					const { config, video } = dataConnection.metadata;
+
+					// we force show the capture ui here
+					config.show_capture_ui = true;
+
+					config.save = function (name) {
+						saveConfig(name);
+					};
+
+					ocr = await createOCRInstance(config);
+
+					calibration.setOCR(ocr);
+
+					srcCanvas = document.createElement('canvas');
+					srcCanvas.width = video.width;
+					srcCanvas.height = video.height;
+
+					srcCtx = srcCanvas.getContext('2d');
+
+					// receive new frames (VERY low frame rate)
+					dataConnection.on('data', async data => {
+						console.log('Received data object from peer');
+						if (!data.img) return;
+
+						console.log('Received video frame from peer');
+						progress.waitingForFrame.status = true;
+						updateModal();
+						remote_calibration_progress.close();
+
+						const blob = new Blob([data.img]);
+						const bitmap = await createImageBitmap(blob);
+						srcCtx.drawImage(bitmap, 0, 0);
+					});
+
+					const stream = srcCanvas.captureStream(10);
+
+					driver = new CaptureDriver(config, stream);
+					driver.addPlayer({
+						processFrame(frame) {
+							ocr.processVideoFrame(frame);
+						},
+					});
+				});
+
+				peer.on('open', _id => {
+					console.log(
+						`Connected via peerjs, requesting remoteCalibration on player ${this.idx}`
+					);
+
+					progress.connecting.status = true;
+					updateModal();
+
+					remoteAPI.requestRemoteCalibration(this.idx, peerid);
+				});
+			});
+		};
 	}
 
 	setIndex(idx) {
@@ -122,6 +404,36 @@ class Player {
 	setFlag(country_code) {
 		this.dom.country_code_img.src =
 			this.dom.country_code_img.dataset.url.replace('{code}', country_code);
+	}
+
+	setVdoNinjaURL(url) {
+		if (!url) {
+			this.dom.vdo_ninja_url.querySelector('span').replaceChildren();
+			this.dom.vdo_ninja_url.style.display = 'none';
+			return;
+		}
+
+		const u = new URL(url);
+
+		const streamId = u.searchParams.get('view') || u.searchParams.get('push'); // just in case someone passed the push url
+
+		u.searchParams.delete('push');
+		u.searchParams.set('view', streamId);
+		u.searchParams.set('cover', 1);
+		u.searchParams.set('cleanviewer', 1);
+		u.searchParams.set('cleanoutput', 1);
+		u.searchParams.set('transparent', 1);
+		u.searchParams.set('autostart', 1);
+
+		const full_url = u.toString();
+
+		const a = document.createElement('a');
+		a.href = full_url;
+		a.target = '_blank';
+		a.textContent = url.replace(/^https?:\/\//, '').replace(/&.+$/, '');
+
+		this.dom.vdo_ninja_url.querySelector('span').replaceChildren(a);
+		this.dom.vdo_ninja_url.style.display = 'block';
 	}
 
 	setProducers(producers) {
@@ -210,8 +522,16 @@ class Player {
 		this.dom.avatar_url.value = state.profile_image_url;
 		this.dom.avatar_img.src = state.profile_image_url;
 
+		if (state.vdo_ninja_url) {
+			this.setVdoNinjaURL(state.vdo_ninja_url);
+		}
+
 		this.dom.country_code_select.value = state.country_code;
 		this.setFlag(state.country_code);
+
+		this.dom.remote_calibration_btn.style.display = state.remote_calibration
+			? 'inline-block'
+			: 'none';
 	}
 }
 
@@ -295,6 +615,7 @@ function addPlayer() {
 		users: player_node.querySelector('.users select'),
 		name: player_node.querySelector('.name'),
 		avatar_url: player_node.querySelector('input.avatar'),
+		images: player_node.querySelector('.images'),
 		avatar_img: player_node.querySelector('img.avatar'),
 		country_code_select: player_node.querySelector('select.country_code'),
 		country_code_img: player_node.querySelector('img.country_code'),
@@ -306,6 +627,8 @@ function addPlayer() {
 		camera_restart_btn: player_node.querySelector('.camera_restart'),
 		camera_mirror_btn: player_node.querySelector('.camera_mirror'),
 		focus_player_btn: player_node.querySelector('.focus_player'),
+		remote_calibration_btn: player_node.querySelector('.remote_calibration'),
+		vdo_ninja_url: player_node.querySelector('.vdo_ninja_url'),
 	});
 
 	players_node.appendChild(player_node);
@@ -376,6 +699,17 @@ function bootstrap() {
 			});
 		});
 
+	dom.hide_all_profile_cards.addEventListener('click', () => {
+		remoteAPI.showProfileCard(false, 0);
+		remoteAPI.showProfileCard(false, 1);
+
+		dom.show_profile_cards_controls
+			.querySelectorAll('input')
+			.forEach(checkbox => {
+				checkbox.checked = false;
+			});
+	});
+
 	dom.allow_autojoin.addEventListener('click', function () {
 		remoteAPI.allowAutoJoin(this.checked);
 	});
@@ -390,6 +724,12 @@ function bootstrap() {
 		switch (command) {
 			case 'state': {
 				setState(args[0]);
+				break;
+			}
+
+			case 'setVdoNinjaURL': {
+				const [pidx, url] = args;
+				players[pidx].setVdoNinjaURL(url);
 				break;
 			}
 

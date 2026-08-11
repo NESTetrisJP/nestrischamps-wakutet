@@ -355,7 +355,7 @@
 					<span class="header">DIFF</span>
 					<span class="value">0&#x202F;000&#x202F;000</span>
 					<span class="tetris"
-						><span class="value">0.00</span>&#x202F;TETRISES</span
+						><span class="value">0.00</span>&#x202F;TETRIS</span
 					>
 				</div>
 
@@ -427,7 +427,7 @@
 				players: 4,
 			});
 		</script>
-		<script src="/vendor/peerjs.1.5.4.min.js"></script>
+		<script src="/vendor/peerjs.1.5.5.min.js"></script>
 		<script type="module">
 			import '/views/bg.js';
 			import { peerServerOptions } from '/views/constants.js';
@@ -483,7 +483,6 @@
 							diff_box: player_node.querySelector(`.score.diff`),
 						},
 						{
-							field_pixel_size: 4.5,
 							preview_pixel_size: 3.5,
 							format_score: v => readableScoreFomatter(v),
 							stereo: translate([1, 2], [-1, 1], player_num),

@@ -1,3 +1,5 @@
+/* global view_meta */
+
 import QueryString from '/js/QueryString.js';
 import Connection from '/js/connection.js';
 import {
@@ -99,7 +101,7 @@ class TetrisCompetitionAPI {
 	}
 
 	resetVictories(clear_field = true) {
-		this.victories = players.map(p => 0);
+		this.victories = players.map(_p => 0);
 
 		players.forEach((player, idx) => {
 			this._repaintVictories(idx);
@@ -221,27 +223,23 @@ class TetrisCompetitionAPI {
 		const victories = this.victories[player_idx];
 		const hearts = player.dom.hearts;
 
-		if (!hearts || !hearts.childNodes) return;
+		if (!hearts?.childNodes) return;
 
-		// clear all the hearts
-		while (hearts.childNodes.length) {
-			hearts.removeChild(hearts.childNodes[0]);
-		}
+		const newHearts = Array(this.first_to)
+			.fill()
+			.map((_, idx) => {
+				const heart = document.createElement('span');
 
-		// reset to specified value
-		for (let idx = 0; idx < this.first_to; idx++) {
-			const heart = document.createElement('span');
+				heart.innerHTML = '&#338;'; // represented as a heart in the font
 
-			heart.innerHTML = '&#338;'; // represented as a heart in the font
+				if (idx < victories) {
+					heart.classList.add('win');
+				}
 
-			if (idx < victories) {
-				heart.classList.add('win');
-			}
+				return heart;
+			});
 
-			const insert_method = player.render_wins_rtl ? 'prepend' : 'appendChild';
-
-			hearts[insert_method](heart);
-		}
+		hearts.replaceChildren(...newHearts);
 	}
 
 	frame(player_idx, data) {
@@ -273,7 +271,7 @@ export class Competition {
 				QueryString.get('video') !== '0' && view_meta.get('video')
 			); // view_meta is a JS global (if it exists!) -- sort of gross
 			this.view_meta = view_meta;
-		} catch (err) {
+		} catch (_err) {
 			this.has_video = false;
 			this.view_meta = new URLSearchParams({});
 		}

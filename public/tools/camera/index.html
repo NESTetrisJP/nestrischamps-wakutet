@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>NestrisChamps Camera Tester</title>
+		<script type="module">
+			import { lazyBulmaSheets } from '/producer/components/NtcComponent.js';
+			lazyBulmaSheets().then(sheets => {
+				document.adoptedStyleSheets = sheets;
+				document.querySelector('body').classList.remove('loading');
+			});
+		</script>
+		<style type="text/css">
+			body.loading {
+				background: black; /* black FOUC better than white */
+			}
+
+			#root {
+				margin-top: 1em;
+			}
+
+			#video {
+				height: 480px;
+			}
+
+			th {
+				height: 1em;
+			}
+
+			select {
+				margin-left: 1em;
+			}
+
+			#effective_frame_rate,
+			tbody td {
+				font-family: monospace;
+				white-space: pre;
+			}
+		</style>
+	</head>
+	<body class="loading">
+		<div id="root" class="container">
+			<div>
+				<table class="table is-bordered is-fullwidth">
+					<thead>
+						<tr>
+							<th colspan="2">
+								Device:
+								<select id="devices"></select>
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<th>Last Constraints Request</th>
+							<td rowspan="6"><video id="video"></video></td>
+						</tr>
+						<tr>
+							<td id="request"></td>
+						</tr>
+						<tr>
+							<th>Acquisition Results</th>
+						</tr>
+						<tr>
+							<td id="results"></td>
+						</tr>
+						<tr>
+							<th>
+								Effective Frame Rate
+								<span style="font-size: 0.7em">(frame callback)</span>
+							</th>
+						</tr>
+						<tr>
+							<td id="effective_frame_rate"></td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div id="tunable">
+				<table class="table is-bordered is-striped is-fullwidth">
+					<thead>
+						<tr>
+							<th>Item</th>
+							<th>Capability</th>
+							<th>Stream value</th>
+							<th>Control</th>
+						</tr>
+					</thead>
+					<tbody id="tbody"></tbody>
+				</table>
+			</div>
+		</div>
+		<script type="module" src="./main.js"></script>
+	</body>
+</html>
